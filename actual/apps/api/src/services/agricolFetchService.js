@@ -82,68 +82,60 @@ const fetchLotesFrituraFromApi = async () => {
 };
 
 /**
- * Lotes de materia prima en recepción (ingreso crudo) — fuente correcta para valorización MP.
+ * Recepción de materia prima — esquema validado contra `bd_patacon (2) (2).sql`:
+ * - `registro_recepcion_materia_prima`: id, fecha, id_proveedor, producto, cantidad (kg), materia_recep, lote, orden, …
+ * - `proveedores_materia_prima`: id, nombre, …
+ * - `registro_recepcion_materia_prima_pesaje`: lote, variedad, estado, fecha (variedad complementaria por lote)
+ *
+ * Aliases de salida alineados con `integration.js` → JSON esperado por `LotsPage.jsx`.
  */
-const fetchLotesRecepcionMateriaPrimaFromDb = async ({ from, to } = {}) => {
-  const where = [];
-  const params = [];
-
-  if (from) {
-    where.push('DATE(r.fecha) >= ?');
-    params.push(from);
-  }
-  if (to) {
-    where.push('DATE(r.fecha) <= ?');
-    params.push(to);
-  }
-
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+const fetchLotesRecepcionMateriaPrimaFromDb = async (_filters = {}) => {
   return query(
     `SELECT
-      r.id AS recepcion_id,
-      r.fecha AS fecha_recepcion,
-      r.lote AS lote_codigo,
-      r.producto AS tipo_platano,
-      r.cantidad AS kg_recibidos,
-      r.materia_recep AS kg_materia_declarada,
-      r.orden AS orden_produccion,
-      p.nombre AS proveedor_nombre,
+      r.\`id\` AS recepcion_id,
+      r.\`fecha\` AS fecha_recepcion,
+      r.\`lote\` AS lote_codigo,
+      r.\`producto\` AS tipo_platano,
+      r.\`cantidad\` AS kg_recibidos,
+      r.\`materia_recep\` AS kg_materia_declarada,
+      r.\`orden\` AS orden_produccion,
+      COALESCE(p.\`nombre\`, CONCAT('Proveedor #', r.\`id_proveedor\`)) AS proveedor_nombre,
       (
-        SELECT pes.variedad
-        FROM registro_recepcion_materia_prima_pesaje pes
-        WHERE pes.lote = r.lote AND pes.estado = 1
-        ORDER BY pes.fecha DESC
+        SELECT pes.\`variedad\`
+        FROM \`registro_recepcion_materia_prima_pesaje\` pes
+        WHERE pes.\`lote\` = r.\`lote\` AND pes.\`estado\` = 1
+        ORDER BY pes.\`fecha\` DESC
         LIMIT 1
       ) AS variedad
-    FROM registro_recepcion_materia_prima r
-    INNER JOIN proveedores_materia_prima p ON p.id = r.id_proveedor
-    ${whereSql}
-    ORDER BY r.fecha DESC, r.id DESC`,
-    params
+    FROM \`registro_recepcion_materia_prima\` r
+    LEFT JOIN \`proveedores_materia_prima\` p ON p.\`id\` = r.\`id_proveedor\`
+    ORDER BY r.\`fecha\` DESC, r.\`id\` DESC
+    LIMIT 100`,
+    []
   );
 };
 
 const fetchRecepcionMateriaPrimaById = async (recepcionId) => {
   const rows = await query(
     `SELECT
-      r.id AS recepcion_id,
-      r.fecha AS fecha_recepcion,
-      r.lote AS lote_codigo,
-      r.producto AS tipo_platano,
-      r.cantidad AS kg_recibidos,
-      r.materia_recep AS kg_materia_declarada,
-      r.orden AS orden_produccion,
-      p.nombre AS proveedor_nombre,
+      r.\`id\` AS recepcion_id,
+      r.\`fecha\` AS fecha_recepcion,
+      r.\`lote\` AS lote_codigo,
+      r.\`producto\` AS tipo_platano,
+      r.\`cantidad\` AS kg_recibidos,
+      r.\`materia_recep\` AS kg_materia_declarada,
+      r.\`orden\` AS orden_produccion,
+      COALESCE(p.\`nombre\`, CONCAT('Proveedor #', r.\`id_proveedor\`)) AS proveedor_nombre,
       (
-        SELECT pes.variedad
-        FROM registro_recepcion_materia_prima_pesaje pes
-        WHERE pes.lote = r.lote AND pes.estado = 1
-        ORDER BY pes.fecha DESC
+        SELECT pes.\`variedad\`
+        FROM \`registro_recepcion_materia_prima_pesaje\` pes
+        WHERE pes.\`lote\` = r.\`lote\` AND pes.\`estado\` = 1
+        ORDER BY pes.\`fecha\` DESC
         LIMIT 1
       ) AS variedad
-    FROM registro_recepcion_materia_prima r
-    INNER JOIN proveedores_materia_prima p ON p.id = r.id_proveedor
-    WHERE r.id = ?
+    FROM \`registro_recepcion_materia_prima\` r
+    LEFT JOIN \`proveedores_materia_prima\` p ON p.\`id\` = r.\`id_proveedor\`
+    WHERE r.\`id\` = ?
     LIMIT 1`,
     [recepcionId]
   );

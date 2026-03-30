@@ -127,7 +127,7 @@ router.get('/agricol/lotes', async (req, res, next) => {
     let sourceWarning = '';
     if (recepciones.length === 0) {
       sourceWarning =
-        'Consulta MySQL correcta pero sin filas para los filtros (tabla vacía o rango sin datos).';
+        'Consulta MySQL correcta pero sin filas (tabla vacía o conexión apuntando a otra base).';
     }
 
     const costosMap = new Map();
@@ -173,8 +173,6 @@ router.get('/agricol/lotes', async (req, res, next) => {
     });
 
     const filtered = merged.filter((item) => {
-      if (from && item.fecha_recepcion && item.fecha_recepcion < from) return false;
-      if (to && item.fecha_recepcion && item.fecha_recepcion > to) return false;
       if (estado === 'pendiente' && item.estado_valorizacion !== 'Pendiente') return false;
       if (estado === 'valorizado' && item.estado_valorizacion !== 'Valorizado') return false;
       return true;
