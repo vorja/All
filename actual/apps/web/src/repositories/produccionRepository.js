@@ -20,10 +20,21 @@ const fetchJson = async (url) => {
   return response.json();
 };
 
-const listLotesConProduccion = async () => {
+const buildLotesQuery = ({ from, to, estado, source } = {}) => {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (estado) params.set('estado', estado);
+  if (source) params.set('source', source);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+};
+
+const listLotesConProduccion = async (filters = {}) => {
+  const query = buildLotesQuery(filters);
   const candidates = [
-    '/hcgi/api/integration/agricol/lotes',
-    'http://localhost:3001/integration/agricol/lotes'
+    `/hcgi/api/integration/agricol/lotes${query}`,
+    `http://localhost:3001/integration/agricol/lotes${query}`
   ];
   let lastError = null;
   for (const url of candidates) {

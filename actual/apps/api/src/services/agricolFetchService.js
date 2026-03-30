@@ -63,6 +63,38 @@ const fetchLotesFrituraFromApi = async () => {
   return Array.isArray(lotes) ? lotes : [];
 };
 
+const fetchLotesFrituraFromDb = async ({ from, to } = {}) => {
+  const where = [];
+  const params = [];
+
+  if (from) {
+    where.push('DATE(lf.fecha_produccion) >= ?');
+    params.push(from);
+  }
+  if (to) {
+    where.push('DATE(lf.fecha_produccion) <= ?');
+    params.push(to);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return query(
+    `SELECT
+      lf.id,
+      lf.fecha_produccion,
+      lf.lote_produccion,
+      lf.tipo,
+      lf.canastas,
+      lf.cantidad_kg,
+      lf.estado,
+      rf.orden
+    FROM lotes_fritura lf
+    LEFT JOIN registro_area_fritura rf ON rf.id = lf.id_fritura
+    ${whereSql}
+    ORDER BY lf.fecha_produccion DESC, lf.id DESC`,
+    params
+  );
+};
+
 const fetchProduccionByDateFromDb = async (date) => {
   const performance = await query(
     `SELECT
@@ -106,4 +138,4 @@ const fetchProduccionByDate = async (date) => {
   return fetchProduccionByDateFromDb(date);
 };
 
-export { fetchProduccionByDate, fetchLotesFrituraFromApi };
+export { fetchProduccionByDate, fetchLotesFrituraFromApi, fetchLotesFrituraFromDb };
