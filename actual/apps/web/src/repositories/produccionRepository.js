@@ -14,18 +14,29 @@ const listLotes = async () => {
 
 const fetchJson = async (url) => {
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { message: text || `HTTP ${response.status}` };
   }
-  return response.json();
+  if (!response.ok) {
+    const msg =
+      data.message ||
+      (typeof data.error === 'string' ? data.error : null) ||
+      text ||
+      `HTTP ${response.status}`;
+    throw new Error(msg);
+  }
+  return data;
 };
 
-const buildLotesQuery = ({ from, to, estado, source } = {}) => {
+const buildLotesQuery = ({ from, to, estado } = {}) => {
   const params = new URLSearchParams();
   if (from) params.set('from', from);
   if (to) params.set('to', to);
   if (estado) params.set('estado', estado);
-  if (source) params.set('source', source);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 };
@@ -49,12 +60,33 @@ const listLotesConProduccion = async (filters = {}) => {
       lastError = error;
     }
   }
-  const fallback = await listLotes().catch(() => []);
-  return {
-    lotes: fallback,
-    sourceWarning: `No fue posible consultar API de produccion. Mostrando lotes de PocketBase. ${lastError ? `Detalle: ${lastError.message}` : ''}`.trim(),
-    sourceUsed: 'pocketbase_fallback'
-  };
+  throw lastError || new Error('No se pudo consultar la API de integración (recepción).');
+};
+
+const valorizarRecepcionLote = async (recepcionId, precioKg) => {
+  const body = JSON.stringify({ recepcionId, precioKg });
+  const candidates = [
+    '/hcgi/api/integration/agricol/lotes/valorizar',
+    'http://localhost:3001/integration/agricol/lotes/valorizar'
+  ];
+  let lastError = null;
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+      return data;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('No se pudo conectar al servidor de integración.');
 };
 
 const listHechosByRange = async (from, to) => {
@@ -69,4 +101,4 @@ const listHechosByRange = async (from, to) => {
   });
 };
 
-export { listOrders, listLotes, listLotesConProduccion, listHechosByRange };
+export { listOrders, listLotes, listLotesConProduccion, listHechosByRange, valorizarRecepcionLote };

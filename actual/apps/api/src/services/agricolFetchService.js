@@ -81,6 +81,75 @@ const fetchLotesFrituraFromApi = async () => {
   return normalizeLotesPayload(raw);
 };
 
+/**
+ * Lotes de materia prima en recepción (ingreso crudo) — fuente correcta para valorización MP.
+ */
+const fetchLotesRecepcionMateriaPrimaFromDb = async ({ from, to } = {}) => {
+  const where = [];
+  const params = [];
+
+  if (from) {
+    where.push('DATE(r.fecha) >= ?');
+    params.push(from);
+  }
+  if (to) {
+    where.push('DATE(r.fecha) <= ?');
+    params.push(to);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return query(
+    `SELECT
+      r.id AS recepcion_id,
+      r.fecha AS fecha_recepcion,
+      r.lote AS lote_codigo,
+      r.producto AS tipo_platano,
+      r.cantidad AS kg_recibidos,
+      r.materia_recep AS kg_materia_declarada,
+      r.orden AS orden_produccion,
+      p.nombre AS proveedor_nombre,
+      (
+        SELECT pes.variedad
+        FROM registro_recepcion_materia_prima_pesaje pes
+        WHERE pes.lote = r.lote AND pes.estado = 1
+        ORDER BY pes.fecha DESC
+        LIMIT 1
+      ) AS variedad
+    FROM registro_recepcion_materia_prima r
+    INNER JOIN proveedores_materia_prima p ON p.id = r.id_proveedor
+    ${whereSql}
+    ORDER BY r.fecha DESC, r.id DESC`,
+    params
+  );
+};
+
+const fetchRecepcionMateriaPrimaById = async (recepcionId) => {
+  const rows = await query(
+    `SELECT
+      r.id AS recepcion_id,
+      r.fecha AS fecha_recepcion,
+      r.lote AS lote_codigo,
+      r.producto AS tipo_platano,
+      r.cantidad AS kg_recibidos,
+      r.materia_recep AS kg_materia_declarada,
+      r.orden AS orden_produccion,
+      p.nombre AS proveedor_nombre,
+      (
+        SELECT pes.variedad
+        FROM registro_recepcion_materia_prima_pesaje pes
+        WHERE pes.lote = r.lote AND pes.estado = 1
+        ORDER BY pes.fecha DESC
+        LIMIT 1
+      ) AS variedad
+    FROM registro_recepcion_materia_prima r
+    INNER JOIN proveedores_materia_prima p ON p.id = r.id_proveedor
+    WHERE r.id = ?
+    LIMIT 1`,
+    [recepcionId]
+  );
+  return rows[0] || null;
+};
+
 const fetchLotesFrituraFromDb = async ({ from, to } = {}) => {
   const where = [];
   const params = [];
@@ -164,4 +233,10 @@ const fetchProduccionByDate = async (date) => {
   return fetchProduccionByDateFromDb(date);
 };
 
-export { fetchProduccionByDate, fetchLotesFrituraFromApi, fetchLotesFrituraFromDb };
+export {
+  fetchProduccionByDate,
+  fetchLotesFrituraFromApi,
+  fetchLotesFrituraFromDb,
+  fetchLotesRecepcionMateriaPrimaFromDb,
+  fetchRecepcionMateriaPrimaById
+};

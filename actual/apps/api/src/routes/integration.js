@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { runSync } from '../services/integrationService.js';
-import { fetchLotesFrituraFromApi, fetchLotesFrituraFromDb, fetchProduccionByDate } from '../services/agricolFetchService.js';
+import {
+  fetchLotesRecepcionMateriaPrimaFromDb,
+  fetchRecepcionMateriaPrimaById,
+  fetchProduccionByDate
+} from '../services/agricolFetchService.js';
 import { mapToIntegrationEvents } from '../services/mappingService.js';
 import pocketbaseClient from '../utils/pocketbaseClient.js';
 import { query as agricolQuery } from '../utils/agricolDbClient.js';
@@ -18,6 +22,20 @@ const toDateOnly = (value) => {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+};
+
+const costMetaFromPb = (row) => {
+  const kg = Number(row.kg_entrada || 0);
+  const precioStored = Number(row.precio_kg_materia || 0);
+  const costoMp = Number(row.costo_materia_prima_total || 0);
+  const precioKg = precioStored > 0 ? precioStored : (kg > 0 && costoMp > 0 ? costoMp / kg : 0);
+  return {
+    pocketbaseId: row.id,
+    precioKg,
+    costoMateriaPrima: costoMp,
+    costoTotal: Number(row.costo_total_lote || 0),
+    margen: Number(row.margen_lote || 0)
+  };
 };
 
 router.get('/agricol/status', async (_req, res, next) => {
@@ -68,91 +86,95 @@ router.get('/agricol/lotes', async (req, res, next) => {
     const from = req.query?.from || '';
     const to = req.query?.to || '';
     const estado = String(req.query?.estado || 'todos').toLowerCase();
-    const source = String(req.query?.source || 'auto').toLowerCase();
 
-    let lotesProduccion = [];
-    let sourceUsed = 'api';
+    let recepciones;
+    try {
+      recepciones = await fetchLotesRecepcionMateriaPrimaFromDb({ from, to });
+    } catch (error) {
+      console.error(
+        '[GET /integration/agricol/lotes] fetchLotesRecepcionMateriaPrimaFromDb FAILED (MySQL):',
+        error
+      );
+      return res.status(500).json({
+        error: 'mysql_recepcion',
+        message: error.message || String(error),
+        code: error.code,
+        errno: error.errno,
+        sqlState: error.sqlState
+      });
+    }
+
+    if (!Array.isArray(recepciones)) {
+      recepciones = [];
+    }
+
+    let lotesCostos;
+    try {
+      lotesCostos = await pocketbaseClient.collection('lotes_produccion_ext').getFullList({
+        sort: '-fecha_produccion'
+      });
+    } catch (error) {
+      console.error(
+        '[GET /integration/agricol/lotes] PocketBase lotes_produccion_ext getFullList FAILED:',
+        error
+      );
+      return res.status(500).json({
+        error: 'pocketbase',
+        message: error.message || String(error)
+      });
+    }
+
     let sourceWarning = '';
-    let dbErrorDetail = '';
-
-    if (source === 'db') {
-      sourceUsed = 'db';
-      try {
-        lotesProduccion = await fetchLotesFrituraFromDb({ from, to });
-      } catch (error) {
-        lotesProduccion = [];
-        dbErrorDetail = error.message;
-      }
-    } else {
-      lotesProduccion = await fetchLotesFrituraFromApi().catch(() => []);
-      if ((!Array.isArray(lotesProduccion) || lotesProduccion.length === 0) && source !== 'api') {
-        let lotesDb = [];
-        try {
-          lotesDb = await fetchLotesFrituraFromDb({ from, to });
-        } catch (error) {
-          dbErrorDetail = error.message;
-        }
-        if (Array.isArray(lotesDb) && lotesDb.length > 0) {
-          lotesProduccion = lotesDb;
-          sourceUsed = 'db';
-          sourceWarning = 'API de produccion sin respuesta/datos. Mostrando lotes desde DB de produccion.';
-        }
-      }
+    if (recepciones.length === 0) {
+      sourceWarning =
+        'Consulta MySQL correcta pero sin filas para los filtros (tabla vacía o rango sin datos).';
     }
 
-    if (!Array.isArray(lotesProduccion)) {
-      lotesProduccion = [];
-    }
-    if (lotesProduccion.length === 0 && !sourceWarning) {
-      sourceWarning = source === 'db'
-        ? 'No fue posible leer lotes desde DB de produccion (o no hay datos para los filtros).'
-        : 'No fue posible leer lotes desde API de produccion (o no hay datos en este momento).';
-      if (dbErrorDetail) {
-        sourceWarning = `${sourceWarning} Detalle DB: ${dbErrorDetail}`;
+    const costosMap = new Map();
+    lotesCostos.forEach((row) => {
+      const meta = costMetaFromPb(row);
+      if (row.source_id) {
+        costosMap.set(row.source_id, meta);
       }
-    }
+      if (row.lote_produccion) {
+        costosMap.set(row.lote_produccion, meta);
+      }
+    });
 
-    const lotesCostos = await pocketbaseClient.collection('lotes_produccion_ext').getFullList({
-      sort: '-fecha_produccion'
-    }).catch(() => []);
+    const merged = recepciones.map((row) => {
+      const sourceId = `rrmp:${row.recepcion_id}`;
+      const internalKey = `RRMP-${row.recepcion_id}`;
+      const costo = costosMap.get(sourceId) || costosMap.get(internalKey);
+      const kg = Number(row.kg_recibidos || 0);
+      const fecha = toDateOnly(row.fecha_recepcion);
+      const variedad = row.variedad || row.tipo_platano || '';
+      const valorizado =
+        costo &&
+        (Number(costo.precioKg) > 0 || Number(costo.costoMateriaPrima) > 0);
 
-    const costosMap = new Map(
-      lotesCostos.map((row) => [
-        row.lote_produccion,
-        {
-          costoMateriaPrima: Number(row.costo_materia_prima_total || 0),
-          costoTotal: Number(row.costo_total_lote || 0),
-          margen: Number(row.margen_lote || 0)
-        }
-      ])
-    );
-
-    const merged = lotesProduccion.map((row, idx) => {
-      const loteProduccion = row.lote_produccion || row.lote || `lote-${idx}`;
-      const costo = costosMap.get(loteProduccion);
-      const fecha = toDateOnly(row.fecha_produccion);
       return {
-        id: `${loteProduccion}-${idx}`,
-        lote_produccion: loteProduccion,
-        orden: row.orden || '-',
-        fecha_produccion: fecha,
-        tipo_calidad: row.tipo || '',
-        producto: row.producto_fritura || row.producto || '',
-        proveedores: row.proveedores_nombres || '',
-        kg_salida: Number(row.cantidad_kg || row.peso || 0),
-        cajas_salida: Number(row.total_cajas || 0),
-        canastas: Number(row.canastas || 0),
-        estado_valorizacion: costo && costo.costoMateriaPrima > 0 ? 'Valorizado' : 'Pendiente',
-        estado_origen: Number(row.estado || 0) === 1 ? 'Activo' : 'Inactivo',
-        costo_materia_prima_total: costo?.costoMateriaPrima || 0,
-        costo_total_lote: costo?.costoTotal || 0,
-        margen_lote: costo?.margen || 0
+        id: sourceId,
+        recepcion_id: row.recepcion_id,
+        lote_codigo: row.lote_codigo,
+        lote_internal_key: internalKey,
+        proveedor: row.proveedor_nombre || '',
+        tipo_platano: row.tipo_platano || '',
+        variedad,
+        kg_recibidos: kg,
+        orden_produccion: row.orden_produccion ?? null,
+        fecha_recepcion: fecha,
+        precio_kg: costo ? Number(costo.precioKg) : 0,
+        valor_total: costo ? Number(costo.costoMateriaPrima) : 0,
+        costo_total_lote: costo ? Number(costo.costoTotal) : 0,
+        margen_lote: costo ? Number(costo.margen) : 0,
+        pocketbase_id: costo?.pocketbaseId || null,
+        estado_valorizacion: valorizado ? 'Valorizado' : 'Pendiente'
       };
     });
 
     const filtered = merged.filter((item) => {
-      if (from && item.fecha_produccion && item.fecha_produccion < from) return false;
-      if (to && item.fecha_produccion && item.fecha_produccion > to) return false;
+      if (from && item.fecha_recepcion && item.fecha_recepcion < from) return false;
+      if (to && item.fecha_recepcion && item.fecha_recepcion > to) return false;
       if (estado === 'pendiente' && item.estado_valorizacion !== 'Pendiente') return false;
       if (estado === 'valorizado' && item.estado_valorizacion !== 'Valorizado') return false;
       return true;
@@ -163,16 +185,70 @@ router.get('/agricol/lotes', async (req, res, next) => {
       pendientes: filtered.filter((l) => l.estado_valorizacion === 'Pendiente').length,
       lotes: filtered,
       sourceWarning,
-      filters: { from, to, estado, source },
-      sourceUsed
+      filters: { from, to, estado },
+      sourceUsed: 'mysql_recepcion_materia_prima'
     });
   } catch (error) {
-    // Absolute fallback: never fail this route in UI.
-    res.json({
-      total: 0,
-      pendientes: 0,
-      lotes: [],
-      sourceWarning: `Fallback activado en lotes: ${error.message}`
+    console.error('[GET /integration/agricol/lotes] UNEXPECTED error:', error);
+    next(error);
+  }
+});
+
+router.post('/agricol/lotes/valorizar', async (req, res) => {
+  try {
+    const recepcionId = Number(req.body?.recepcionId);
+    const precioKg = Number(req.body?.precioKg);
+    if (!recepcionId || !Number.isFinite(precioKg) || precioKg < 0) {
+      return res.status(400).json({ message: 'recepcionId y precioKg validos son requeridos.' });
+    }
+
+    const row = await fetchRecepcionMateriaPrimaById(recepcionId);
+    if (!row) {
+      return res.status(404).json({ message: 'Recepcion de materia prima no encontrada en MySQL.' });
+    }
+
+    const kg = Number(row.kg_recibidos || 0);
+    const costoMp = precioKg * kg;
+    const sourceId = `rrmp:${recepcionId}`;
+    const variedad = row.variedad || '';
+
+    const payload = {
+      lote_produccion: `RRMP-${recepcionId}`,
+      lote_proveedor: row.lote_codigo,
+      source_id: sourceId,
+      tipo_producto: row.tipo_platano,
+      variedad,
+      fecha_produccion: toDateOnly(row.fecha_recepcion),
+      kg_entrada: kg,
+      precio_kg_materia: precioKg,
+      costo_materia_prima_total: costoMp,
+      costo_total_lote: costoMp,
+      ingreso_total_lote: 0
+    };
+
+    const existing = await pocketbaseClient.collection('lotes_produccion_ext').getFullList({
+      filter: `source_id = '${sourceId}'`
+    });
+
+    let record;
+    if (existing.length > 0) {
+      record = await pocketbaseClient.collection('lotes_produccion_ext').update(existing[0].id, payload);
+    } else {
+      record = await pocketbaseClient.collection('lotes_produccion_ext').create(payload);
+    }
+
+    return res.json({
+      ok: true,
+      record,
+      valor_total: costoMp,
+      precio_kg: precioKg
+    });
+  } catch (error) {
+    const msg = error?.message || String(error);
+    const status = msg.includes('auth') || msg.includes('403') ? 503 : 500;
+    return res.status(status).json({
+      ok: false,
+      message: `No se pudo guardar en PocketBase: ${msg}`
     });
   }
 });
@@ -198,7 +274,7 @@ router.get('/agricol/diagnostics', async (_req, res) => {
   }
 
   try {
-    const rows = await agricolQuery('SELECT COUNT(*) AS total FROM lotes_fritura');
+    const rows = await agricolQuery('SELECT COUNT(*) AS total FROM registro_recepcion_materia_prima');
     lotesCount = Number(rows?.[0]?.total || 0);
     mysqlUp = true;
     mysqlDetail = 'OK';

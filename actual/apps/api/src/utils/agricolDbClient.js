@@ -19,8 +19,19 @@ const getPool = () => {
 };
 
 const query = async (sql, params = []) => {
-  const [rows] = await getPool().query(sql, params);
-  return rows;
+  try {
+    const [rows] = await getPool().query(sql, params);
+    return rows;
+  } catch (error) {
+    console.error('[agricolDbClient] MySQL query failed:', {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      sqlState: error.sqlState,
+      sqlMessage: error.sqlMessage
+    });
+    throw error;
+  }
 };
 
 export { query };
