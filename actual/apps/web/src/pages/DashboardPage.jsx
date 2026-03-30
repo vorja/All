@@ -16,6 +16,8 @@ const DashboardPage = () => {
   const [hechos, setHechos] = useState([]);
   const [nomina, setNomina] = useState([]);
   const [error, setError] = useState('');
+  const [previewEvents, setPreviewEvents] = useState([]);
+  const [previewWarning, setPreviewWarning] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -28,6 +30,14 @@ const DashboardPage = () => {
         setCostos(costosRows);
         setHechos(hechosRows);
         setNomina(nominaRows);
+        if (costosRows.length === 0 && hechosRows.length === 0) {
+          const response = await fetch(`http://localhost:3001/integration/agricol/preview?date=${today}`);
+          if (response.ok) {
+            const data = await response.json();
+            setPreviewEvents(data.events || []);
+            setPreviewWarning(data.sourceWarning || '');
+          }
+        }
       } catch (e) {
         setError(e.message);
       }
@@ -37,10 +47,23 @@ const DashboardPage = () => {
 
   const kpis = useMemo(() => {
     const costoFases = costos.reduce((sum, row) => sum + (Number(row.costo_total_fase) || 0), 0);
-    const kg = hechos.reduce((sum, row) => sum + (Number(row.kg_procesados) || 0), 0);
-    const cajas = hechos.reduce((sum, row) => sum + (Number(row.cajas) || 0), 0);
-    const rechazo = hechos.reduce((sum, row) => sum + (Number(row.kg_rechazo) || 0), 0);
-    const horas = hechos.reduce((sum, row) => sum + (Number(row.horas_hombre) || 0), 0);
+    const rowsForOps = hechos.length > 0
+      ? hechos.map((row) => ({
+          kg: Number(row.kg_procesados || 0),
+          cajas: Number(row.cajas || 0),
+          rechazo: Number(row.kg_rechazo || 0),
+          horas: Number(row.horas_hombre || 0)
+        }))
+      : previewEvents.map((row) => ({
+          kg: Number(row.kgProcesados || 0),
+          cajas: Number(row.cajas || 0),
+          rechazo: Number(row.kgRechazo || 0),
+          horas: Number(row.horasHombre || 0)
+        }));
+    const kg = rowsForOps.reduce((sum, row) => sum + row.kg, 0);
+    const cajas = rowsForOps.reduce((sum, row) => sum + row.cajas, 0);
+    const rechazo = rowsForOps.reduce((sum, row) => sum + row.rechazo, 0);
+    const horas = rowsForOps.reduce((sum, row) => sum + row.horas, 0);
     const costoNomina = nomina.reduce((sum, row) => sum + (Number(row.costo_total) || 0), 0);
     return {
       costoFases,
@@ -53,7 +76,7 @@ const DashboardPage = () => {
       costoKg: kg > 0 ? (costoFases + costoNomina) / kg : 0,
       costoCaja: cajas > 0 ? (costoFases + costoNomina) / cajas : 0
     };
-  }, [costos, hechos, nomina]);
+  }, [costos, hechos, nomina, previewEvents]);
 
   const costoPorFase = useMemo(() => {
     const map = {};
@@ -73,7 +96,17 @@ const DashboardPage = () => {
           <p className="text-slate-500 mt-1">Datos reales de PocketBase integrados con producción.</p>
         </div>
 
-        {error ? <div className="text-red-600 text-sm">{error}</div> : null}
+        {error ? <div className="text-red-600 text-sm">Error de carga: {error}</div> : null}
+        {!error && costos.length === 0 && hechos.length === 0 ? (
+          <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
+            Mostrando preview directo desde API de produccion ({previewEvents.length} eventos). Aun no hay datos persistidos en PocketBase.
+          </div>
+        ) : null}
+        {previewWarning ? (
+          <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
+            {previewWarning}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card><CardHeader><CardTitle className="text-sm">Costo total período</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{formatCurrency(kpis.costoTotal)}</CardContent></Card>

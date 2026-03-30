@@ -12,6 +12,38 @@ const listLotes = async () => {
   });
 };
 
+const fetchJson = async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+};
+
+const listLotesConProduccion = async () => {
+  const candidates = [
+    '/hcgi/api/integration/agricol/lotes',
+    'http://localhost:3001/integration/agricol/lotes'
+  ];
+  let lastError = null;
+  for (const url of candidates) {
+    try {
+      const data = await fetchJson(url);
+      return {
+        lotes: data.lotes || [],
+        sourceWarning: data.sourceWarning || ''
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  const fallback = await listLotes().catch(() => []);
+  return {
+    lotes: fallback,
+    sourceWarning: `No fue posible consultar API de produccion. Mostrando lotes de PocketBase. ${lastError ? `Detalle: ${lastError.message}` : ''}`.trim()
+  };
+};
+
 const listHechosByRange = async (from, to) => {
   const filters = [];
   if (from) filters.push(`fecha >= '${from}'`);
@@ -24,4 +56,4 @@ const listHechosByRange = async (from, to) => {
   });
 };
 
-export { listOrders, listLotes, listHechosByRange };
+export { listOrders, listLotes, listLotesConProduccion, listHechosByRange };

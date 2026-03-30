@@ -38,12 +38,13 @@ const mapToIntegrationEvents = ({ performance, frituraLotes }, sourceDate) => {
   const lotesRows = Array.isArray(frituraLotes) ? frituraLotes : [frituraLotes];
   lotesRows.filter(Boolean).forEach((row, idx) => {
     if (!row.lote_produccion && !row.lote) return;
+    const orden = row.orden || row.lote_produccion || row.lote || `lote-${sourceDate}-${idx}`;
     events.push({
       sourceSystem: "agricol_patacon",
       sourceId: `lote-${sourceDate}-${idx}`,
       sourceVersion: "v1",
       fecha: getDateOnly(row.fecha_produccion || row.fecha || sourceDate),
-      orden: row.orden || null,
+      orden,
       loteProduccion: row.lote_produccion || row.lote,
       faseCodigo: "empaque",
       kgProcesados: toNumber(row.cantidad_kg || 0),

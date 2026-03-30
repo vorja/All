@@ -1,8 +1,12 @@
 import { query } from '../utils/agricolDbClient.js';
+import jwt from 'jsonwebtoken';
 
 const AGRICOL_SOURCE_MODE = process.env.AGRICOL_SOURCE_MODE || 'db';
 const AGRICOL_API_URL = process.env.AGRICOL_API_URL || 'http://localhost:3000';
 const AGRICOL_API_TOKEN = process.env.AGRICOL_API_TOKEN || '';
+const AGRICOL_API_JWT_SECRET = process.env.AGRICOL_API_JWT_SECRET || '';
+const AGRICOL_API_ROLE = process.env.AGRICOL_API_ROLE || 'Dashboard';
+const AGRICOL_API_USER_ID = Number(process.env.AGRICOL_API_USER_ID || 1);
 
 const buildHeaders = () => {
   const headers = {
@@ -10,20 +14,40 @@ const buildHeaders = () => {
   };
   if (AGRICOL_API_TOKEN) {
     headers.Authorization = `Bearer ${AGRICOL_API_TOKEN}`;
+    return headers;
+  }
+  if (AGRICOL_API_JWT_SECRET) {
+    const token = jwt.sign(
+      { id: AGRICOL_API_USER_ID, rol: AGRICOL_API_ROLE },
+      AGRICOL_API_JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+    headers.Authorization = `Bearer ${token}`;
   }
   return headers;
 };
 
 const getJson = async (path) => {
-  const response = await fetch(`${AGRICOL_API_URL}${path}`, {
-    method: "GET",
-    headers: buildHeaders()
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Failed request ${path}: ${response.status} ${body}`);
+  try {
+    const response = await fetch(`${AGRICOL_API_URL}${path}`, {
+      method: "GET",
+      headers: buildHeaders()
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      if (response.status === 404) {
+        return [];
+      }
+      throw new Error(`Failed request ${path}: ${response.status} ${body}`);
+    }
+    return response.json();
+  } catch (error) {
+    // Keep integration resilient when production API is down.
+    if (error?.message?.includes('fetch failed')) {
+      return [];
+    }
+    throw error;
   }
-  return response.json();
 };
 
 const fetchProduccionByDateFromApi = async (date) => {
@@ -32,6 +56,11 @@ const fetchProduccionByDateFromApi = async (date) => {
     getJson('/data/lotes-fritura/obtener')
   ]);
   return { performance, frituraLotes };
+};
+
+const fetchLotesFrituraFromApi = async () => {
+  const lotes = await getJson('/data/lotes-fritura/obtener');
+  return Array.isArray(lotes) ? lotes : [];
 };
 
 const fetchProduccionByDateFromDb = async (date) => {
@@ -77,4 +106,4 @@ const fetchProduccionByDate = async (date) => {
   return fetchProduccionByDateFromDb(date);
 };
 
-export { fetchProduccionByDate };
+export { fetchProduccionByDate, fetchLotesFrituraFromApi };

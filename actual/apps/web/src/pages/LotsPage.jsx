@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Card } from '@/components/ui/card';
-import { listLotes } from '@/repositories/produccionRepository.js';
+import { listLotesConProduccion } from '@/repositories/produccionRepository.js';
 
 const LotsPage = () => {
   const [lots, setLots] = useState([]);
   const [error, setError] = useState('');
+  const [sourceWarning, setSourceWarning] = useState('');
 
   useEffect(() => {
-    listLotes()
-      .then(setLots)
+    listLotesConProduccion()
+      .then((result) => {
+        setLots(result.lotes || []);
+        setSourceWarning(result.sourceWarning || '');
+      })
       .catch((e) => setError(e.message));
   }, []);
 
@@ -24,6 +28,12 @@ const LotsPage = () => {
           <p className="text-slate-500 mt-1">Gestión y valorización de lotes recibidos.</p>
         </div>
         {error ? <div className="text-red-600 text-sm">{error}</div> : null}
+        {sourceWarning ? <div className="text-amber-700 text-sm">{sourceWarning}</div> : null}
+        {!error && lots.length === 0 ? (
+          <div className="text-slate-600 text-sm bg-slate-50 border border-slate-200 rounded-md p-3">
+            Aun no hay lotes visibles. Verifica que la API `agricol_patacon` este arriba y conectada a MySQL.
+          </div>
+        ) : null}
 
         <Card className="card-shadow overflow-hidden border-t-4 border-t-primary">
           <div className="overflow-x-auto">
@@ -34,6 +44,7 @@ const LotsPage = () => {
                   <th>Orden</th>
                   <th className="text-right">Kg salida</th>
                   <th className="text-right">Cajas</th>
+                  <th className="text-center">Estado valorizacion</th>
                   <th className="text-right">Costo MP</th>
                   <th className="text-right">Costo total</th>
                   <th className="text-right">Margen</th>
@@ -43,9 +54,12 @@ const LotsPage = () => {
                 {lots.map((lot) => (
                   <tr key={lot.id}>
                     <td className="font-medium text-slate-900">{lot.lote_produccion}</td>
-                    <td className="text-slate-700">{lot.expand?.orden_ref?.orden || '-'}</td>
+                    <td className="text-slate-700">{lot.orden || lot.expand?.orden_ref?.orden || '-'}</td>
                     <td className="text-right font-mono text-slate-700 text-base">{Number(lot.kg_salida || 0).toLocaleString()}</td>
                     <td className="text-right font-mono text-slate-700 text-base">{Number(lot.cajas_salida || 0).toLocaleString()}</td>
+                    <td className={`text-center text-xs font-semibold ${lot.estado_valorizacion === 'Pendiente' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {lot.estado_valorizacion || 'Pendiente'}
+                    </td>
                     <td className="text-right font-mono">{formatCurrency(lot.costo_materia_prima_total)}</td>
                     <td className="text-right font-mono">{formatCurrency(lot.costo_total_lote)}</td>
                     <td className="text-right font-mono">{formatCurrency(lot.margen_lote)}</td>
