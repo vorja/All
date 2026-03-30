@@ -42,7 +42,8 @@ const listLotesConProduccion = async (filters = {}) => {
       const data = await fetchJson(url);
       return {
         lotes: data.lotes || [],
-        sourceWarning: data.sourceWarning || ''
+        sourceWarning: data.sourceWarning || '',
+        sourceUsed: data.sourceUsed || ''
       };
     } catch (error) {
       lastError = error;
@@ -51,7 +52,8 @@ const listLotesConProduccion = async (filters = {}) => {
   const fallback = await listLotes().catch(() => []);
   return {
     lotes: fallback,
-    sourceWarning: `No fue posible consultar API de produccion. Mostrando lotes de PocketBase. ${lastError ? `Detalle: ${lastError.message}` : ''}`.trim()
+    sourceWarning: `No fue posible consultar API de produccion. Mostrando lotes de PocketBase. ${lastError ? `Detalle: ${lastError.message}` : ''}`.trim(),
+    sourceUsed: 'pocketbase_fallback'
   };
 };
 

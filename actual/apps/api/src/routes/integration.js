@@ -7,6 +7,19 @@ import { query as agricolQuery } from '../utils/agricolDbClient.js';
 
 const router = Router();
 
+const toDateOnly = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    return value.length >= 10 ? value.slice(0, 10) : value;
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 router.get('/agricol/status', async (_req, res, next) => {
   try {
     res.json({
@@ -117,13 +130,16 @@ router.get('/agricol/lotes', async (req, res, next) => {
     const merged = lotesProduccion.map((row, idx) => {
       const loteProduccion = row.lote_produccion || row.lote || `lote-${idx}`;
       const costo = costosMap.get(loteProduccion);
-      const fecha = row.fecha_produccion || null;
+      const fecha = toDateOnly(row.fecha_produccion);
       return {
         id: `${loteProduccion}-${idx}`,
         lote_produccion: loteProduccion,
         orden: row.orden || '-',
         fecha_produccion: fecha,
-        kg_salida: Number(row.cantidad_kg || 0),
+        tipo_calidad: row.tipo || '',
+        producto: row.producto_fritura || row.producto || '',
+        proveedores: row.proveedores_nombres || '',
+        kg_salida: Number(row.cantidad_kg || row.peso || 0),
         cajas_salida: Number(row.total_cajas || 0),
         canastas: Number(row.canastas || 0),
         estado_valorizacion: costo && costo.costoMateriaPrima > 0 ? 'Valorizado' : 'Pendiente',

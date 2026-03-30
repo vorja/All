@@ -51,16 +51,34 @@ const getJson = async (path) => {
 };
 
 const fetchProduccionByDateFromApi = async (date) => {
-  const [performance, frituraLotes] = await Promise.all([
+  const [performanceRaw, frituraLotesRaw] = await Promise.all([
     getJson(`/data/produccion/performance/${date}`),
     getJson('/data/lotes-fritura/obtener')
   ]);
-  return { performance, frituraLotes };
+  return {
+    performance: normalizePerformancePayload(performanceRaw),
+    frituraLotes: normalizeLotesPayload(frituraLotesRaw)
+  };
+};
+
+const normalizeLotesPayload = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (raw && Array.isArray(raw.data)) return raw.data;
+  if (raw && Array.isArray(raw.payload)) return raw.payload;
+  return [];
+};
+
+const normalizePerformancePayload = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (raw && Array.isArray(raw.data)) return raw.data;
+  if (raw && raw.data != null && !Array.isArray(raw.data)) return [raw.data];
+  if (raw && Array.isArray(raw.payload)) return raw.payload;
+  return [];
 };
 
 const fetchLotesFrituraFromApi = async () => {
-  const lotes = await getJson('/data/lotes-fritura/obtener');
-  return Array.isArray(lotes) ? lotes : [];
+  const raw = await getJson('/data/lotes-fritura/obtener');
+  return normalizeLotesPayload(raw);
 };
 
 const fetchLotesFrituraFromDb = async ({ from, to } = {}) => {
@@ -86,7 +104,15 @@ const fetchLotesFrituraFromDb = async ({ from, to } = {}) => {
       lf.canastas,
       lf.cantidad_kg,
       lf.estado,
-      rf.orden
+      rf.orden,
+      rf.producto AS producto_fritura,
+      (
+        SELECT GROUP_CONCAT(DISTINCT p.nombre ORDER BY p.nombre SEPARATOR ', ')
+        FROM detalle_fritura_proveedor dfp
+        INNER JOIN proveedores_materia_prima p ON p.id = dfp.id_proveedor
+        WHERE dfp.id_fritura = lf.id_fritura
+          AND dfp.lote_produccion = lf.lote_produccion
+      ) AS proveedores_nombres
     FROM lotes_fritura lf
     LEFT JOIN registro_area_fritura rf ON rf.id = lf.id_fritura
     ${whereSql}

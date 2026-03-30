@@ -7,6 +7,7 @@ const LotsPage = () => {
   const [lots, setLots] = useState([]);
   const [error, setError] = useState('');
   const [sourceWarning, setSourceWarning] = useState('');
+  const [sourceUsed, setSourceUsed] = useState('');
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({
     from: '',
@@ -22,6 +23,7 @@ const LotsPage = () => {
       .then((result) => {
         setLots(result.lotes || []);
         setSourceWarning(result.sourceWarning || '');
+        setSourceUsed(result.sourceUsed || '');
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -43,6 +45,20 @@ const LotsPage = () => {
         </div>
         {error ? <div className="text-red-600 text-sm">{error}</div> : null}
         {sourceWarning ? <div className="text-amber-700 text-sm">{sourceWarning}</div> : null}
+        <div className="text-slate-600 text-sm bg-slate-50 border border-slate-200 rounded-md p-3 space-y-1">
+          <p>
+            <span className="font-medium text-slate-800">De dónde salen los datos:</span>{' '}
+            volúmenes y metadatos de producción vienen de MySQL <code className="text-xs bg-white px-1 rounded">bd_patacon.lotes_fritura</code>
+            {' '}(vía API <code className="text-xs bg-white px-1 rounded">/data/lotes-fritura/obtener</code> o consulta directa). Los importes en pesos se cruzan con PocketBase{' '}
+            <code className="text-xs bg-white px-1 rounded">lotes_produccion_ext</code> por <code className="text-xs bg-white px-1 rounded">lote_produccion</code>.
+            Si no hay fila de costos o <code className="text-xs bg-white px-1 rounded">costo_materia_prima_total</code> es 0, verás <em>Pendiente</em> y montos en $0.
+          </p>
+          {sourceUsed ? (
+            <p className="text-xs text-slate-500">
+              Fuente activa en esta carga: <span className="font-mono">{sourceUsed}</span>
+            </p>
+          ) : null}
+        </div>
         <Card className="p-4 border border-slate-200">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
             <label className="text-sm text-slate-700">
@@ -116,6 +132,9 @@ const LotsPage = () => {
                 <tr>
                   <th>Lote producción</th>
                   <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>Producto (fritura)</th>
+                  <th>Proveedor(es)</th>
                   <th>Orden</th>
                   <th className="text-right">Kg salida</th>
                   <th className="text-right">Cajas</th>
@@ -130,6 +149,9 @@ const LotsPage = () => {
                   <tr key={lot.id}>
                     <td className="font-medium text-slate-900">{lot.lote_produccion}</td>
                     <td className="text-slate-700">{lot.fecha_produccion || '-'}</td>
+                    <td className="text-slate-700">{lot.tipo_calidad || '-'}</td>
+                    <td className="text-slate-700 max-w-[10rem] truncate" title={lot.producto || ''}>{lot.producto || '-'}</td>
+                    <td className="text-slate-700 max-w-[12rem] truncate" title={lot.proveedores || ''}>{lot.proveedores || '-'}</td>
                     <td className="text-slate-700">{lot.orden || lot.expand?.orden_ref?.orden || '-'}</td>
                     <td className="text-right font-mono text-slate-700 text-base">{Number(lot.kg_salida || 0).toLocaleString()}</td>
                     <td className="text-right font-mono text-slate-700 text-base">{Number(lot.cajas_salida || 0).toLocaleString()}</td>
