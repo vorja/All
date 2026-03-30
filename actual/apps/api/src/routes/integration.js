@@ -145,7 +145,10 @@ router.get('/agricol/lotes', async (req, res, next) => {
       const sourceId = `rrmp:${row.recepcion_id}`;
       const internalKey = `RRMP-${row.recepcion_id}`;
       const costo = costosMap.get(sourceId) || costosMap.get(internalKey);
+      const idLote = row.lote_codigo || internalKey;
       const kg = Number(row.kg_recibidos || 0);
+      const precioKg = costo ? Number(costo.precioKg) : 0;
+      const valorTotal = costo ? Number(costo.costoMateriaPrima) : 0;
       const fecha = toDateOnly(row.fecha_recepcion);
       const variedad = row.variedad || row.tipo_platano || '';
       const valorizado =
@@ -155,32 +158,31 @@ router.get('/agricol/lotes', async (req, res, next) => {
       return {
         id: sourceId,
         recepcion_id: row.recepcion_id,
-        lote_codigo: row.lote_codigo,
-        lote_internal_key: internalKey,
+        id_lote: idLote,
         proveedor: row.proveedor_nombre || '',
         tipo_platano: row.tipo_platano || '',
         variedad,
-        kg_recibidos: kg,
+        cantidad_kg: kg,
         orden_produccion: row.orden_produccion ?? null,
-        fecha_recepcion: fecha,
-        precio_kg: costo ? Number(costo.precioKg) : 0,
-        valor_total: costo ? Number(costo.costoMateriaPrima) : 0,
+        fecha: fecha,
+        precio_kg: precioKg,
+        valor_total: valorTotal,
         costo_total_lote: costo ? Number(costo.costoTotal) : 0,
         margen_lote: costo ? Number(costo.margen) : 0,
         pocketbase_id: costo?.pocketbaseId || null,
-        estado_valorizacion: valorizado ? 'Valorizado' : 'Pendiente'
+        estado: valorizado ? 'Valorizado' : 'Pendiente'
       };
     });
 
     const filtered = merged.filter((item) => {
-      if (estado === 'pendiente' && item.estado_valorizacion !== 'Pendiente') return false;
-      if (estado === 'valorizado' && item.estado_valorizacion !== 'Valorizado') return false;
+      if (estado === 'pendiente' && item.estado !== 'Pendiente') return false;
+      if (estado === 'valorizado' && item.estado !== 'Valorizado') return false;
       return true;
     });
 
     res.json({
       total: filtered.length,
-      pendientes: filtered.filter((l) => l.estado_valorizacion === 'Pendiente').length,
+      pendientes: filtered.filter((l) => l.estado === 'Pendiente').length,
       lotes: filtered,
       sourceWarning,
       filters: { from, to, estado },

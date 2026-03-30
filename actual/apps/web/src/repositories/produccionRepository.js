@@ -41,6 +41,20 @@ const buildLotesQuery = ({ from, to, estado } = {}) => {
   return qs ? `?${qs}` : '';
 };
 
+const normalizeLote = (row) => ({
+  id: row.id || `rrmp:${row.recepcion_id || row.id_lote || 'na'}`,
+  recepcion_id: row.recepcion_id ?? null,
+  id_lote: row.id_lote || '',
+  proveedor: row.proveedor || '',
+  tipo_platano: row.tipo_platano || '',
+  variedad: row.variedad || '',
+  cantidad_kg: Number(row.cantidad_kg || 0),
+  precio_kg: Number(row.precio_kg || 0),
+  valor_total: Number(row.valor_total || 0),
+  fecha: row.fecha || null,
+  estado: row.estado || 'Pendiente'
+});
+
 const listLotesConProduccion = async (filters = {}) => {
   const query = buildLotesQuery(filters);
   const candidates = [
@@ -51,8 +65,9 @@ const listLotesConProduccion = async (filters = {}) => {
   for (const url of candidates) {
     try {
       const data = await fetchJson(url);
+      const lotes = Array.isArray(data.lotes) ? data.lotes.map(normalizeLote) : [];
       return {
-        lotes: data.lotes || [],
+        lotes,
         sourceWarning: data.sourceWarning || '',
         sourceUsed: data.sourceUsed || ''
       };
