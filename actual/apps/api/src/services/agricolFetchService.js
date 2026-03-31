@@ -89,7 +89,25 @@ const fetchLotesFrituraFromApi = async () => {
  *
  * Aliases de salida alineados con `integration.js` → JSON esperado por `LotsPage.jsx`.
  */
-const fetchLotesRecepcionMateriaPrimaFromDb = async (_filters = {}) => {
+const fetchLotesRecepcionMateriaPrimaFromDb = async ({ from, to, limit = 100 } = {}) => {
+  const where = [];
+  const params = [];
+
+  if (from) {
+    where.push('DATE(r.`fecha`) >= ?');
+    params.push(from);
+  }
+  if (to) {
+    where.push('DATE(r.`fecha`) <= ?');
+    params.push(to);
+  }
+
+  const parsedLimit = Number(limit);
+  const safeLimit = Number.isFinite(parsedLimit) && parsedLimit > 0
+    ? Math.min(Math.floor(parsedLimit), 5000)
+    : 100;
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
   return query(
     `SELECT
       r.\`id\` AS recepcion_id,
@@ -109,9 +127,10 @@ const fetchLotesRecepcionMateriaPrimaFromDb = async (_filters = {}) => {
       ) AS variedad
     FROM \`registro_recepcion_materia_prima\` r
     LEFT JOIN \`proveedores_materia_prima\` p ON p.\`id\` = r.\`id_proveedor\`
+    ${whereSql}
     ORDER BY r.\`fecha\` DESC, r.\`id\` DESC
-    LIMIT 100`,
-    []
+    LIMIT ${safeLimit}`,
+    params
   );
 };
 
@@ -167,15 +186,20 @@ const fetchLotesFrituraFromDb = async ({ from, to } = {}) => {
       lf.estado,
       rf.orden,
       rf.producto AS producto_fritura,
-      (
-        SELECT GROUP_CONCAT(DISTINCT p.nombre ORDER BY p.nombre SEPARATOR ', ')
-        FROM detalle_fritura_proveedor dfp
-        INNER JOIN proveedores_materia_prima p ON p.id = dfp.id_proveedor
-        WHERE dfp.id_fritura = lf.id_fritura
-          AND dfp.lote_produccion = lf.lote_produccion
-      ) AS proveedores_nombres
-    FROM lotes_fritura lf
-    LEFT JOIN registro_area_fritura rf ON rf.id = lf.id_fritura
+      COALESCE(dfp_aggr.proveedores_nombres, '') AS proveedores_nombres
+    FROM \`lotes_fritura\` lf
+    LEFT JOIN \`registro_area_fritura\` rf ON rf.id = lf.id_fritura
+    LEFT JOIN (
+      SELECT
+        dfp.id_fritura,
+        dfp.lote_produccion,
+        GROUP_CONCAT(DISTINCT p.nombre ORDER BY p.nombre SEPARATOR ', ') AS proveedores_nombres
+      FROM \`detalle_fritura_proveedor\` dfp
+      INNER JOIN \`proveedores_materia_prima\` p ON p.id = dfp.id_proveedor
+      GROUP BY dfp.id_fritura, dfp.lote_produccion
+    ) AS dfp_aggr
+      ON dfp_aggr.id_fritura = lf.id_fritura
+      AND dfp_aggr.lote_produccion = lf.lote_produccion
     ${whereSql}
     ORDER BY lf.fecha_produccion DESC, lf.id DESC`,
     params
@@ -185,21 +209,82 @@ const fetchLotesFrituraFromDb = async ({ from, to } = {}) => {
 const fetchProduccionByDateFromDb = async (date) => {
   const performance = await query(
     `SELECT
-      COALESCE(rf.orden, rae.orden, rac.orden, rrmp.orden) AS orden,
-      COALESCE(rf.fecha, rae.fecha_empaque, rac.fecha, rrmp.fecha) AS fecha,
-      rf.lote_produccion AS lote_produccion,
-      rf.materia_fritura AS kg_fritura,
-      rf.rechazo_fritura AS rechazo_fritura,
-      rf.canastillas AS canastillas,
-      rae.total_cajas AS total_cajas,
-      (rf.gas_final - rf.gas_inicio) AS gas_consumo
-    FROM registro_area_fritura rf
-    LEFT JOIN registro_area_empaque rae ON rae.orden = rf.orden
-    LEFT JOIN registro_area_corte rac ON rac.orden = rf.orden
-    LEFT JOIN registro_recepcion_materia_prima rrmp ON rrmp.orden = rf.orden
-    WHERE DATE(COALESCE(rf.fecha, rae.fecha_empaque, rac.fecha, rrmp.fecha)) = ?
+      activity.orden AS orden,
+      ? AS fecha,
+      COALESCE(lf_daily.lote_produccion, rrmp_daily.lote_recepcion) AS lote_produccion,
+      COALESCE(rf_daily.kg_fritura, 0) AS kg_fritura,
+      COALESCE(rf_daily.rechazo_fritura, 0) AS rechazo_fritura,
+      COALESCE(rf_daily.canastillas, 0) AS canastillas,
+      COALESCE(rae_daily.total_cajas, 0) AS total_cajas,
+      COALESCE(rf_daily.gas_consumo, 0) AS gas_consumo,
+      COALESCE(rrmp_daily.kg_recibidos, 0) AS kg_recibidos
+    FROM (
+      SELECT orden
+      FROM (
+        SELECT rrmp.orden
+        FROM \`registro_recepcion_materia_prima\` rrmp
+        WHERE DATE(rrmp.fecha) = ? AND rrmp.orden IS NOT NULL
+        UNION ALL
+        SELECT rac.orden
+        FROM \`registro_area_corte\` rac
+        WHERE DATE(rac.fecha) = ? AND rac.orden IS NOT NULL
+        UNION ALL
+        SELECT rf.orden
+        FROM \`registro_area_fritura\` rf
+        WHERE DATE(rf.fecha) = ? AND rf.orden IS NOT NULL
+        UNION ALL
+        SELECT rae.orden
+        FROM \`registro_area_empaque\` rae
+        WHERE DATE(rae.fecha_empaque) = ? AND rae.orden IS NOT NULL
+      ) AS unioned
+      GROUP BY orden
+    ) AS activity
+    LEFT JOIN (
+      SELECT
+        rf.orden,
+        SUM(COALESCE(rf.materia_fritura, 0)) AS kg_fritura,
+        SUM(COALESCE(rf.rechazo_fritura, 0)) AS rechazo_fritura,
+        SUM(COALESCE(rf.canastillas, 0)) AS canastillas,
+        SUM(
+          CASE
+            WHEN rf.gas_final IS NOT NULL AND rf.gas_inicio IS NOT NULL
+              THEN (rf.gas_final - rf.gas_inicio)
+            ELSE 0
+          END
+        ) AS gas_consumo
+      FROM \`registro_area_fritura\` rf
+      WHERE DATE(rf.fecha) = ?
+      GROUP BY rf.orden
+    ) AS rf_daily ON rf_daily.orden = activity.orden
+    LEFT JOIN (
+      SELECT
+        rae.orden,
+        SUM(COALESCE(rae.total_cajas, 0)) AS total_cajas
+      FROM \`registro_area_empaque\` rae
+      WHERE DATE(rae.fecha_empaque) = ?
+      GROUP BY rae.orden
+    ) AS rae_daily ON rae_daily.orden = activity.orden
+    LEFT JOIN (
+      SELECT
+        rrmp.orden,
+        SUM(COALESCE(rrmp.cantidad, 0)) AS kg_recibidos,
+        MAX(rrmp.lote) AS lote_recepcion
+      FROM \`registro_recepcion_materia_prima\` rrmp
+      WHERE DATE(rrmp.fecha) = ?
+      GROUP BY rrmp.orden
+    ) AS rrmp_daily ON rrmp_daily.orden = activity.orden
+    LEFT JOIN (
+      SELECT
+        rf.orden,
+        MAX(lf.lote_produccion) AS lote_produccion
+      FROM \`registro_area_fritura\` rf
+      INNER JOIN \`lotes_fritura\` lf ON lf.id_fritura = rf.id
+      WHERE DATE(rf.fecha) = ?
+      GROUP BY rf.orden
+    ) AS lf_daily ON lf_daily.orden = activity.orden
+    ORDER BY activity.orden ASC
     `,
-    [date]
+    [date, date, date, date, date, date, date, date, date]
   );
 
   const frituraLotes = await query(

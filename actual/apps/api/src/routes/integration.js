@@ -10,6 +10,10 @@ import pocketbaseClient from '../utils/pocketbaseClient.js';
 import { query as agricolQuery } from '../utils/agricolDbClient.js';
 
 const router = Router();
+const ESTADOS_VALIDOS = new Set(['todos', 'pendiente', 'valorizado']);
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const isIsoDate = (value) => !value || ISO_DATE_RE.test(String(value));
 
 const toDateOnly = (value) => {
   if (!value) return null;
@@ -86,10 +90,18 @@ router.get('/agricol/lotes', async (req, res, next) => {
     const from = req.query?.from || '';
     const to = req.query?.to || '';
     const estado = String(req.query?.estado || 'todos').toLowerCase();
+    const limit = Number(req.query?.limit || 100);
+
+    if (!isIsoDate(from) || !isIsoDate(to)) {
+      return res.status(400).json({ message: 'from/to deben usar formato YYYY-MM-DD.' });
+    }
+    if (!ESTADOS_VALIDOS.has(estado)) {
+      return res.status(400).json({ message: 'estado debe ser: todos, pendiente o valorizado.' });
+    }
 
     let recepciones;
     try {
-      recepciones = await fetchLotesRecepcionMateriaPrimaFromDb({ from, to });
+      recepciones = await fetchLotesRecepcionMateriaPrimaFromDb({ from, to, limit });
     } catch (error) {
       console.error(
         '[GET /integration/agricol/lotes] fetchLotesRecepcionMateriaPrimaFromDb FAILED (MySQL):',
@@ -185,7 +197,7 @@ router.get('/agricol/lotes', async (req, res, next) => {
       pendientes: filtered.filter((l) => l.estado === 'Pendiente').length,
       lotes: filtered,
       sourceWarning,
-      filters: { from, to, estado },
+      filters: { from, to, estado, limit },
       sourceUsed: 'mysql_recepcion_materia_prima'
     });
   } catch (error) {
@@ -198,8 +210,8 @@ router.post('/agricol/lotes/valorizar', async (req, res) => {
   try {
     const recepcionId = Number(req.body?.recepcionId);
     const precioKg = Number(req.body?.precioKg);
-    if (!recepcionId || !Number.isFinite(precioKg) || precioKg < 0) {
-      return res.status(400).json({ message: 'recepcionId y precioKg validos son requeridos.' });
+    if (!recepcionId || !Number.isFinite(precioKg) || precioKg <= 0 || precioKg > 1000000) {
+      return res.status(400).json({ message: 'recepcionId valido y precioKg entre 1 y 1000000 son requeridos.' });
     }
 
     const row = await fetchRecepcionMateriaPrimaById(recepcionId);
@@ -249,6 +261,58 @@ router.post('/agricol/lotes/valorizar', async (req, res) => {
     return res.status(status).json({
       ok: false,
       message: `No se pudo guardar en PocketBase: ${msg}`
+    });
+  }
+});
+
+router.post('/agricol/lotes/sync-pocketbase', async (req, res) => {
+  try {
+    const from = req.body?.from || '';
+    const to = req.body?.to || '';
+    const limit = Number(req.body?.limit || 1000);
+
+    if (!isIsoDate(from) || !isIsoDate(to)) {
+      return res.status(400).json({ message: 'from/to deben usar formato YYYY-MM-DD.' });
+    }
+
+    const recepciones = await fetchLotesRecepcionMateriaPrimaFromDb({ from, to, limit });
+    let created = 0;
+    let updated = 0;
+
+    for (const row of recepciones) {
+      const sourceId = `rrmp:${row.recepcion_id}`;
+      const kg = Number(row.kg_recibidos || 0);
+      const payload = {
+        lote_produccion: `RRMP-${row.recepcion_id}`,
+        lote_proveedor: row.lote_codigo || '',
+        source_id: sourceId,
+        tipo_producto: row.tipo_platano || '',
+        variedad: row.variedad || row.tipo_platano || '',
+        fecha_produccion: toDateOnly(row.fecha_recepcion),
+        kg_entrada: kg
+      };
+      const existing = await pocketbaseClient.collection('lotes_produccion_ext').getFullList({
+        filter: `source_id = '${sourceId}'`
+      });
+      if (existing.length > 0) {
+        await pocketbaseClient.collection('lotes_produccion_ext').update(existing[0].id, payload);
+        updated += 1;
+      } else {
+        await pocketbaseClient.collection('lotes_produccion_ext').create(payload);
+        created += 1;
+      }
+    }
+
+    return res.json({
+      ok: true,
+      total_mysql: recepciones.length,
+      created,
+      updated
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      message: error.message || String(error)
     });
   }
 });

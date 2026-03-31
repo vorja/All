@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { listLotesConProduccion, valorizarRecepcionLote } from '@/repositories/produccionRepository.js';
 import { toast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import PriceAssignmentModal from '@/components/PriceAssignmentModal.jsx';
 
 const formatCop = (value) =>
@@ -204,7 +204,18 @@ const LotsPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0 sm:p-2">
-            <Table>
+            {loading ? (
+              <div className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Cargando lotes desde MySQL...</span>
+              </div>
+            ) : lots.length === 0 ? (
+              <div className="py-10 px-4 text-center text-muted-foreground">
+                <p className="text-sm font-medium">No hay lotes disponibles para los filtros actuales.</p>
+                <p className="text-xs mt-1">Ajusta el rango de fechas o ejecuta la sincronización desde Patacon.</p>
+              </div>
+            ) : (
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Lote ID</TableHead>
@@ -262,7 +273,8 @@ const LotsPage = () => {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

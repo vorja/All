@@ -13,7 +13,11 @@ const listLotes = async () => {
 };
 
 const fetchJson = async (url) => {
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json'
+    }
+  });
   const text = await response.text();
   let data = {};
   try {
@@ -79,6 +83,9 @@ const listLotesConProduccion = async (filters = {}) => {
 };
 
 const valorizarRecepcionLote = async (recepcionId, precioKg) => {
+  if (!Number.isFinite(Number(precioKg)) || Number(precioKg) <= 0) {
+    throw new Error('El precio por kg debe ser un numero mayor a 0.');
+  }
   const body = JSON.stringify({ recepcionId, precioKg });
   const candidates = [
     '/hcgi/api/integration/agricol/lotes/valorizar',
