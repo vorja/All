@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
+import { MESES, QUINCENAS, mockNomina, mockEmpleados } from '@/data/mockData.js';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,26 +12,26 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { Search, FilterX, Plus, DollarSign, CheckCircle, Clock } from 'lucide-react';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogFooter 
+} from '@/components/ui/dialog';
+import { Search, FilterX, Plus, Edit2, Trash2, Eye, DollarSign, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { createNomina, listNomina } from '@/repositories/nominaRepository.js';
-import { getPeriodoEstado } from '@/repositories/periodosRepository.js';
 
 const PayrollPage = () => {
-  const MESES = [
-    { valor: 1, label: 'Enero' }, { valor: 2, label: 'Febrero' }, { valor: 3, label: 'Marzo' },
-    { valor: 4, label: 'Abril' }, { valor: 5, label: 'Mayo' }, { valor: 6, label: 'Junio' },
-    { valor: 7, label: 'Julio' }, { valor: 8, label: 'Agosto' }, { valor: 9, label: 'Septiembre' },
-    { valor: 10, label: 'Octubre' }, { valor: 11, label: 'Noviembre' }, { valor: 12, label: 'Diciembre' }
-  ];
-  const QUINCENAS = [{ valor: 1, label: 'Primera Quincena' }, { valor: 2, label: 'Segunda Quincena' }];
-  const [data, setData] = useState([]);
-  const [selectedMes, setSelectedMes] = useState(Number(new Date().toISOString().slice(5, 7)));
+  const [data, setData] = useState(mockNomina);
+  const [selectedMes, setSelectedMes] = useState(3); // Current month (March)
   const [selectedQuincena, setSelectedQuincena] = useState(1);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     empleado_id: '',
+    mes: '',
     mesNumero: '',
     quincena: '',
     horas_regulares_trabajadas: '',
@@ -46,10 +47,6 @@ const PayrollPage = () => {
   // Filters state
   const [filterEmpleado, setFilterEmpleado] = useState('');
   const [filterEstado, setFilterEstado] = useState('Todos');
-
-  useEffect(() => {
-    listNomina('').then(setData).catch((e) => toast.error(e.message));
-  }, []);
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-CO', { 
@@ -74,13 +71,9 @@ const PayrollPage = () => {
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
-      const rowDate = item.fecha ? new Date(item.fecha) : null;
-      const rowMonth = rowDate ? rowDate.getUTCMonth() + 1 : selectedMes;
-      const day = rowDate ? rowDate.getUTCDate() : 1;
-      const rowQuincena = day <= 15 ? 1 : 2;
-      const matchMes = rowMonth === selectedMes;
-      const matchQuincena = rowQuincena === selectedQuincena;
-      const matchEmpleado = String(item.empleado_id || '').toLowerCase().includes(filterEmpleado.toLowerCase());
+      const matchMes = item.mesNumero === selectedMes;
+      const matchQuincena = item.quincena === selectedQuincena;
+      const matchEmpleado = item.empleado.toLowerCase().includes(filterEmpleado.toLowerCase());
       const matchEstado = filterEstado === 'Todos' || item.estado === filterEstado;
       
       return matchMes && matchQuincena && matchEmpleado && matchEstado;
@@ -100,41 +93,45 @@ const PayrollPage = () => {
     return filteredData.filter(item => item.estado === 'Pendiente').length;
   }, [filteredData]);
 
-  const handleAddRecord = async (e) => {
+  const handleAddRecord = (e) => {
     e.preventDefault();
     
-    if (!formData.empleado_id || !formData.mesNumero || !formData.quincena || 
+    // Validation
+    if (!formData.empleado_id || !formData.mes || !formData.quincena || 
         !formData.horas_regulares_trabajadas || !formData.valor_hora_regular || 
         !formData.valor_hora_extra) {
       toast.error('Complete todos los campos obligatorios');
       return;
     }
-    const month = Number(formData.mesNumero);
-    const day = Number(formData.quincena) === 1 ? 15 : 28;
-    const periodo = await getPeriodoEstado(2026, month, Number(formData.quincena));
-    if (periodo?.estado === 'cerrado') {
-      toast.error('Periodo contable cerrado: no se permite editar nómina.');
-      return;
-    }
-    const fecha = `2026-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')} 00:00:00.000Z`;
-    const payload = {
+
+    const empleado = mockEmpleados.find(emp => emp.id === formData.empleado_id);
+    const mesObj = MESES.find(m => m.valor === parseInt(formData.mesNumero));
+
+    const newRecord = {
+      id: `NOM-${String(data.length + 1).padStart(3, '0')}`,
       empleado_id: formData.empleado_id,
-      fecha,
-      horas_regulares_trabajadas: Number(formData.horas_regulares_trabajadas),
-      valor_hora_regular: Number(formData.valor_hora_regular),
-      cantidad_horas_extras: Number(formData.cantidad_horas_extras || 0),
-      valor_hora_extra: Number(formData.valor_hora_extra || 0),
-      recargos_nocturnos: Number(formData.recargos_nocturnos || 0),
-      recargos_dominicales: Number(formData.recargos_dominicales || 0),
-      deducciones: Number(formData.deducciones || 0),
+      empleado: empleado?.nombre || 'Desconocido',
+      mes: mesObj?.label || '',
+      mesNumero: parseInt(formData.mesNumero),
+      quincena: parseInt(formData.quincena),
+      horas_regulares_trabajadas: parseFloat(formData.horas_regulares_trabajadas),
+      valor_hora_regular: parseFloat(formData.valor_hora_regular),
+      cantidad_horas_extras: parseFloat(formData.cantidad_horas_extras) || 0,
+      valor_hora_extra: parseFloat(formData.valor_hora_extra),
+      recargos_nocturnos: parseFloat(formData.recargos_nocturnos) || 0,
+      recargos_dominicales: parseFloat(formData.recargos_dominicales) || 0,
+      deducciones: parseFloat(formData.deducciones) || 0,
+      fecha: new Date().toISOString().split('T')[0],
       estado: formData.estado
     };
-    const created = await createNomina(payload);
-    setData((prev) => [created, ...prev]);
-    toast.success('Registro guardado en PocketBase');
+
+    setData(prev => [...prev, newRecord]);
+    toast.success('Registro de nómina agregado exitosamente');
     
+    // Reset form
     setFormData({
       empleado_id: '',
+      mes: '',
       mesNumero: '',
       quincena: '',
       horas_regulares_trabajadas: '',
@@ -146,6 +143,7 @@ const PayrollPage = () => {
       deducciones: '',
       estado: 'Pendiente'
     });
+    setIsDialogOpen(false);
   };
 
   const calculatedTotal = useMemo(() => {
@@ -166,8 +164,12 @@ const PayrollPage = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Gestión de Nóminas</h1>
-            <p className="text-slate-500 mt-1">Registros reales con cálculo automático de costo total.</p>
+            <p className="text-slate-500 mt-1">Visualización y edición de registros de nómina de empleados.</p>
           </div>
+          <Button onClick={() => setIsDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700">
+            <Plus className="h-4 w-4 mr-2" />
+            Agregar Registro de Nómina
+          </Button>
         </div>
 
         {/* Filters Section */}
@@ -302,7 +304,7 @@ const PayrollPage = () => {
                   filteredData.map((n) => (
                     <tr key={n.id} className="hover:bg-slate-50/80 transition-colors bg-white">
                       <td className="px-4 py-3 font-medium text-slate-900">
-                        {n.empleado_id}
+                        {n.empleado}
                         <div className="text-xs text-slate-400 font-mono mt-0.5">{n.id}</div>
                       </td>
                       <td className="px-4 py-3 text-center font-mono">{n.horas_regulares_trabajadas}</td>
@@ -327,7 +329,34 @@ const PayrollPage = () => {
                           </Badge>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center text-xs text-slate-500">Gestionar en editor de nómina</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                            title="Ver Detalle"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50"
+                            title="Editar"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -335,22 +364,193 @@ const PayrollPage = () => {
             </table>
           </div>
         </Card>
-        <Card>
-          <CardHeader><CardTitle>Nuevo registro de nómina</CardTitle></CardHeader>
-          <CardContent>
-            <form onSubmit={handleAddRecord} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-              <div><Label>Empleado ID</Label><Input value={formData.empleado_id} onChange={(e) => setFormData({ ...formData, empleado_id: e.target.value })} required /></div>
-              <div className="space-y-2"><Label>Mes</Label><Select value={formData.mesNumero} onValueChange={(v) => setFormData({ ...formData, mesNumero: v })}><SelectTrigger><SelectValue placeholder="Mes" /></SelectTrigger><SelectContent>{MESES.map((m) => <SelectItem key={m.valor} value={String(m.valor)}>{m.label}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-2"><Label>Quincena</Label><Select value={formData.quincena} onValueChange={(v) => setFormData({ ...formData, quincena: v })}><SelectTrigger><SelectValue placeholder="Quincena" /></SelectTrigger><SelectContent>{QUINCENAS.map((q) => <SelectItem key={q.valor} value={String(q.valor)}>{q.label}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Horas regulares</Label><Input type="number" value={formData.horas_regulares_trabajadas} onChange={(e) => setFormData({ ...formData, horas_regulares_trabajadas: e.target.value })} required /></div>
-              <div><Label>Valor H.R.</Label><Input type="number" value={formData.valor_hora_regular} onChange={(e) => setFormData({ ...formData, valor_hora_regular: e.target.value })} required /></div>
-              <div><Label>Horas extra</Label><Input type="number" value={formData.cantidad_horas_extras} onChange={(e) => setFormData({ ...formData, cantidad_horas_extras: e.target.value })} /></div>
-              <div><Label>Valor H.E.</Label><Input type="number" value={formData.valor_hora_extra} onChange={(e) => setFormData({ ...formData, valor_hora_extra: e.target.value })} required /></div>
-              <div><Label>Deducciones</Label><Input type="number" value={formData.deducciones} onChange={(e) => setFormData({ ...formData, deducciones: e.target.value })} /></div>
-              <div className="md:col-span-4"><Button type="submit" className="bg-blue-600 hover:bg-blue-700"><Plus className="h-4 w-4 mr-2" />Guardar nómina ({formatCurrency(calculatedTotal)})</Button></div>
+
+        {/* Add Record Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Agregar Registro de Nómina</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleAddRecord}>
+              <div className="space-y-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="empleado_id">Empleado *</Label>
+                    <Select 
+                      value={formData.empleado_id} 
+                      onValueChange={(value) => setFormData({ ...formData, empleado_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione empleado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mockEmpleados.map(emp => (
+                          <SelectItem key={emp.id} value={emp.id}>{emp.nombre}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="mes">Mes *</Label>
+                    <Select 
+                      value={formData.mesNumero} 
+                      onValueChange={(value) => {
+                        const mesObj = MESES.find(m => m.valor === parseInt(value));
+                        setFormData({ ...formData, mesNumero: value, mes: mesObj?.label || '' });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione mes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MESES.map(mes => (
+                          <SelectItem key={mes.valor} value={String(mes.valor)}>{mes.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="quincena">Quincena *</Label>
+                  <Select 
+                    value={formData.quincena} 
+                    onValueChange={(value) => setFormData({ ...formData, quincena: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione quincena" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {QUINCENAS.map(q => (
+                        <SelectItem key={q.valor} value={String(q.valor)}>{q.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="horas_regulares">Horas Regulares *</Label>
+                    <Input
+                      id="horas_regulares"
+                      type="number"
+                      value={formData.horas_regulares_trabajadas}
+                      onChange={(e) => setFormData({ ...formData, horas_regulares_trabajadas: e.target.value })}
+                      placeholder="80"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="valor_hora_regular">Valor Hora Regular *</Label>
+                    <Input
+                      id="valor_hora_regular"
+                      type="number"
+                      value={formData.valor_hora_regular}
+                      onChange={(e) => setFormData({ ...formData, valor_hora_regular: e.target.value })}
+                      placeholder="6500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="horas_extras">Horas Extra</Label>
+                    <Input
+                      id="horas_extras"
+                      type="number"
+                      value={formData.cantidad_horas_extras}
+                      onChange={(e) => setFormData({ ...formData, cantidad_horas_extras: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="valor_hora_extra">Valor Hora Extra *</Label>
+                    <Input
+                      id="valor_hora_extra"
+                      type="number"
+                      value={formData.valor_hora_extra}
+                      onChange={(e) => setFormData({ ...formData, valor_hora_extra: e.target.value })}
+                      placeholder="9750"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="recargos_nocturnos">Recargos Nocturnos</Label>
+                    <Input
+                      id="recargos_nocturnos"
+                      type="number"
+                      value={formData.recargos_nocturnos}
+                      onChange={(e) => setFormData({ ...formData, recargos_nocturnos: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="recargos_dominicales">Recargos Dominicales</Label>
+                    <Input
+                      id="recargos_dominicales"
+                      type="number"
+                      value={formData.recargos_dominicales}
+                      onChange={(e) => setFormData({ ...formData, recargos_dominicales: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="deducciones">Deducciones</Label>
+                  <Input
+                    id="deducciones"
+                    type="number"
+                    value={formData.deducciones}
+                    onChange={(e) => setFormData({ ...formData, deducciones: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="estado">Estado *</Label>
+                  <Select 
+                    value={formData.estado} 
+                    onValueChange={(value) => setFormData({ ...formData, estado: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pagado">Pagado</SelectItem>
+                      <SelectItem value="Pendiente">Pendiente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Calculated Total Display */}
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-700">Costo Total Calculado:</span>
+                    <span className="text-xl font-bold text-blue-700">{formatCurrency(calculatedTotal)}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                  Agregar Registro
+                </Button>
+              </DialogFooter>
             </form>
-          </CardContent>
-        </Card>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   );

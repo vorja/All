@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Package, Activity, ShieldCheck, Box, FileSpreadsheet, Users, UploadCloud, Clock, Briefcase, BarChart3, Scale, TrendingUp, AlertOctagon } from 'lucide-react';
+import { LayoutDashboard, Package, Activity, ShieldCheck, Box, FileSpreadsheet, Users, UploadCloud, Clock, Briefcase } from 'lucide-react';
 
 const Sidebar = () => {
   const location = useLocation();
@@ -25,13 +25,6 @@ const Sidebar = () => {
     { to: '/nominas', icon: Users, label: 'Ver Nóminas' },
     { to: '/ingreso-nominas', icon: UploadCloud, label: 'Ingreso de Nóminas' },
     { to: '/control-horas', icon: Clock, label: 'Control de Horas' },
-  ];
-
-  const analyticsLinks = [
-    { to: '/costeo-fase', icon: BarChart3, label: 'Costeo por Fase' },
-    { to: '/rentabilidad-lote', icon: Scale, label: 'Rentabilidad por Lote' },
-    { to: '/productividad-vs-costo', icon: TrendingUp, label: 'Productividad vs Costo' },
-    { to: '/desviaciones', icon: AlertOctagon, label: 'Desviaciones' },
   ];
 
   const renderLinks = (links) => {
@@ -87,11 +80,6 @@ const Sidebar = () => {
           <div className="space-y-1.5">
             <p className="px-3 text-[11px] font-bold text-emerald-400/50 uppercase tracking-widest mb-2">Finanzas y Asistencia</p>
             {renderLinks(hrLinks)}
-          </div>
-
-          <div className="space-y-1.5">
-            <p className="px-3 text-[11px] font-bold text-emerald-400/50 uppercase tracking-widest mb-2">Analitica</p>
-            {renderLinks(analyticsLinks)}
           </div>
         </nav>
       </div>

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
+import { mockMedidores } from '@/data/mockData.js';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,21 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Droplets, Zap, Flame, History, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient.js';
 
 const ServicesPage = () => {
-  const [medidores, setMedidores] = useState([]);
+  const [medidores, setMedidores] = useState(mockMedidores);
   const [selectedMedidor, setSelectedMedidor] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddingReading, setIsAddingReading] = useState(false);
   const [newReading, setNewReading] = useState('');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    pb.collection('medidores').getFullList({ sort: '-fecha' })
-      .then(setMedidores)
-      .catch((e) => setError(e.message));
-  }, []);
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('es-CO', {
@@ -47,27 +40,36 @@ const ServicesPage = () => {
     setNewReading('');
   };
 
-  const handleSaveReading = async () => {
+  const handleSaveReading = () => {
     const readingVal = parseFloat(newReading);
-    const currentReading = Number(selectedMedidor.agua_lectura || selectedMedidor.gas_lectura || selectedMedidor.energia_lectura || 0);
-    if (isNaN(readingVal) || readingVal <= currentReading) {
+    if (isNaN(readingVal) || readingVal <= selectedMedidor.lecturaActual) {
       toast.error('La nueva lectura debe ser mayor a la lectura actual.');
       return;
     }
-    const basePayload = {};
-    if (selectedMedidor.agua_lectura !== undefined) basePayload.agua_lectura = readingVal;
-    if (selectedMedidor.gas_lectura !== undefined) basePayload.gas_lectura = readingVal;
-    if (selectedMedidor.energia_lectura !== undefined) basePayload.energia_lectura = readingVal;
-    try {
-      const updated = await pb.collection('medidores').update(selectedMedidor.id, basePayload);
-      setMedidores((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-      setSelectedMedidor(updated);
-      setIsAddingReading(false);
-      setNewReading('');
-      toast.success('Lectura actualizada exitosamente.');
-    } catch (e) {
-      toast.error(e.message);
-    }
+
+    const diferencia = readingVal - selectedMedidor.lecturaActual;
+    const costoEstimado = diferencia * selectedMedidor.precioUnitario;
+    const today = new Date().toISOString().split('T')[0];
+
+    const newHistoryEntry = {
+      fecha: today,
+      lectura: readingVal,
+      diferencia,
+      costoEstimado
+    };
+
+    const updatedMedidor = {
+      ...selectedMedidor,
+      lecturaActual: readingVal,
+      ultimaActualizacion: today,
+      historial: [newHistoryEntry, ...selectedMedidor.historial].slice(0, 5) // Keep last 5
+    };
+
+    setMedidores(medidores.map(m => m.id === selectedMedidor.id ? updatedMedidor : m));
+    setSelectedMedidor(updatedMedidor);
+    setIsAddingReading(false);
+    setNewReading('');
+    toast.success('Lectura actualizada exitosamente.');
   };
 
   return (
@@ -78,21 +80,18 @@ const ServicesPage = () => {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Servicios y Medidores</h1>
           <p className="text-slate-500 mt-1">Control de lecturas y consumos de servicios públicos.</p>
         </div>
-        {error ? <div className="text-red-600 text-sm">{error}</div> : null}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {medidores.map((m) => {
-            const tipo = m.gas_lectura !== undefined ? 'Gas' : m.energia_lectura !== undefined ? 'Energía' : 'Agua';
-            const config = getTipoConfig(tipo);
+            const config = getTipoConfig(m.tipo);
             const Icon = config.icon;
-            const lecturaActual = Number(m.agua_lectura || m.gas_lectura || m.energia_lectura || 0);
             
             return (
               <Card key={m.id} className={`card-shadow overflow-hidden border-t-4 ${config.border.replace('border-', 'border-t-')}`}>
                 <CardContent className="p-6 flex flex-col h-full">
                   <div className="flex justify-between items-start mb-6">
                     <div>
-                      <h3 className="font-bold text-slate-900 text-xl leading-tight">{tipo}</h3>
+                      <h3 className="font-bold text-slate-900 text-xl leading-tight">{m.nombre}</h3>
                       <p className="text-sm text-slate-500 font-mono mt-1">{m.id}</p>
                     </div>
                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${config.bg} ${config.color}`}>
@@ -104,12 +103,12 @@ const ServicesPage = () => {
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Lectura Actual</p>
                     <div className="flex items-baseline gap-2">
                       <span className="text-4xl font-bold font-mono text-slate-900 tracking-tight">
-                        {lecturaActual.toLocaleString()}
+                        {m.lecturaActual.toLocaleString()}
                       </span>
-                      <span className="text-lg font-medium text-slate-500">u</span>
+                      <span className="text-lg font-medium text-slate-500">{m.unidad}</span>
                     </div>
                     <p className="text-sm text-slate-500 mt-2">
-                      Fecha: <span className="font-medium text-slate-700">{m.fecha?.slice(0, 10) || '-'}</span>
+                      Actualizado: <span className="font-medium text-slate-700">{m.ultimaActualizacion}</span>
                     </p>
                   </div>
                   
@@ -135,20 +134,20 @@ const ServicesPage = () => {
               </DialogTitle>
             </DialogHeader>
             
-                {selectedMedidor && (
+            {selectedMedidor && (
               <div className="space-y-6 py-4">
                 <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <div>
                     <Label className="text-slate-500 text-xs uppercase tracking-wider">Unidad de Medida</Label>
-                    <div className="font-medium text-slate-900">u</div>
+                    <div className="font-medium text-slate-900">{selectedMedidor.unidad}</div>
                   </div>
                   <div>
                     <Label className="text-slate-500 text-xs uppercase tracking-wider">Precio Unitario</Label>
-                    <div className="font-medium text-slate-900 font-mono">N/A</div>
+                    <div className="font-medium text-slate-900 font-mono">{formatCurrency(selectedMedidor.precioUnitario)}</div>
                   </div>
                   <div>
                     <Label className="text-slate-500 text-xs uppercase tracking-wider">Última Lectura</Label>
-                    <div className="font-mono text-lg font-bold text-primary">{Number(selectedMedidor.agua_lectura || selectedMedidor.gas_lectura || selectedMedidor.energia_lectura || 0).toLocaleString()}</div>
+                    <div className="font-mono text-lg font-bold text-primary">{selectedMedidor.lecturaActual.toLocaleString()}</div>
                   </div>
                 </div>
 
@@ -161,7 +160,28 @@ const ServicesPage = () => {
                       </Button>
                     </div>
                     
-                    <div className="border border-slate-200 rounded-lg p-4 text-sm text-slate-600">Este módulo usa lecturas almacenadas en `medidores`.</div>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold">Fecha</th>
+                            <th className="px-4 py-3 font-semibold text-right">Lectura</th>
+                            <th className="px-4 py-3 font-semibold text-right">Diferencia</th>
+                            <th className="px-4 py-3 font-semibold text-right">Costo Estimado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {selectedMedidor.historial.map((h, idx) => (
+                            <tr key={idx} className="bg-white hover:bg-slate-50/50">
+                              <td className="px-4 py-3 text-slate-600">{h.fecha}</td>
+                              <td className="px-4 py-3 text-right font-mono font-medium">{h.lectura.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono text-slate-600">+{h.diferencia.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-slate-900">{formatCurrency(h.costoEstimado)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-4 bg-white p-6 border border-slate-200 rounded-xl shadow-sm">
@@ -176,7 +196,7 @@ const ServicesPage = () => {
                         className="input-large-numeric"
                         value={newReading}
                         onChange={(e) => setNewReading(e.target.value)}
-                        placeholder={`Mayor a ${Number(selectedMedidor.agua_lectura || selectedMedidor.gas_lectura || selectedMedidor.energia_lectura || 0)}`}
+                        placeholder={`Mayor a ${selectedMedidor.lecturaActual}`}
                         autoFocus
                       />
                     </div>

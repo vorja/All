@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
+import { mockMantenimiento, mockSaneamiento } from '@/data/mockData.js';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,33 +8,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from '@/components/ui/label';
 import { Plus, Wrench, Bug, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient.js';
 
 const VariableExpensesPage = () => {
-  const [mantenimiento, setMantenimiento] = useState([]);
-  const [saneamiento, setSaneamiento] = useState([]);
-  const [error, setError] = useState('');
+  const [mantenimiento, setMantenimiento] = useState(mockMantenimiento);
+  const [saneamiento, setSaneamiento] = useState(mockSaneamiento);
   
   const [isMantModalOpen, setIsMantModalOpen] = useState(false);
   const [isSanModalOpen, setIsSanModalOpen] = useState(false);
 
   const formatCOP = (value) => new Intl.NumberFormat('es-CO').format(value);
 
-  useEffect(() => {
-    Promise.all([
-      pb.collection('mantenimiento').getFullList({ sort: '-fecha' }),
-      pb.collection('saneamiento').getFullList({ sort: '-fecha' })
-    ])
-      .then(([m, s]) => {
-        setMantenimiento(m);
-        setSaneamiento(s);
-      })
-      .catch((e) => setError(e.message));
-  }, []);
-
-  const handleDelete = async (type, id) => {
-    const collection = type === 'mantenimiento' ? 'mantenimiento' : 'saneamiento';
-    await pb.collection(collection).delete(id);
+  const handleDelete = (type, id) => {
     if (type === 'mantenimiento') {
       setMantenimiento(mantenimiento.filter(item => item.id !== id));
     } else {
@@ -42,7 +27,7 @@ const VariableExpensesPage = () => {
     toast.success('Registro eliminado');
   };
 
-  const handleAddMantenimiento = async (e) => {
+  const handleAddMantenimiento = (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     const newItem = {
@@ -55,13 +40,12 @@ const VariableExpensesPage = () => {
       costo: Number(formData.get('costo')),
       fecha: formData.get('fecha')
     };
-    const created = await pb.collection('mantenimiento').create(newItem);
-    setMantenimiento([created, ...mantenimiento]);
+    setMantenimiento([newItem, ...mantenimiento]);
     setIsMantModalOpen(false);
     toast.success('Gasto de mantenimiento registrado');
   };
 
-  const handleAddSaneamiento = async (e) => {
+  const handleAddSaneamiento = (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     const newItem = {
@@ -74,8 +58,7 @@ const VariableExpensesPage = () => {
       cantidad: Number(formData.get('cantidad')),
       unidad: formData.get('unidad')
     };
-    const created = await pb.collection('saneamiento').create(newItem);
-    setSaneamiento([created, ...saneamiento]);
+    setSaneamiento([newItem, ...saneamiento]);
     setIsSanModalOpen(false);
     toast.success('Gasto de saneamiento registrado');
   };
@@ -184,7 +167,6 @@ const VariableExpensesPage = () => {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Gastos Variables</h1>
           <p className="text-slate-500 mt-1">Gestión de costos operativos por mantenimiento y saneamiento.</p>
         </div>
-        {error ? <div className="text-red-600 text-sm">{error}</div> : null}
 
         {/* MANTENIMIENTO SECTION */}
         <section className="space-y-4">

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
+import { mockCalidad } from '@/data/mockData.js';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,39 +10,17 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import pb from '@/lib/pocketbaseClient.js';
 
 const QualityPage = () => {
-  const [records, setRecords] = useState([]);
+  const [records, setRecords] = useState(mockCalidad);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState('');
   
   // Form state
   const [aceptada, setAceptada] = useState('');
   const [rechazada, setRechazada] = useState('');
   const [observaciones, setObservaciones] = useState('');
-
-  useEffect(() => {
-    pb.collection('calidad')
-      .getFullList({ sort: '-fecha' })
-      .then((rows) => {
-        setRecords(rows.map((row) => ({
-          id: row.id,
-          loteId: row.lote_id,
-          proveedor: row.maquina_id || '-',
-          cantidadOriginal: Number(row.muestras_totales || 0),
-          cantidadAceptada: Number(row.muestras_totales || 0) - Number(row.rechazos || 0),
-          cantidadRechazada: Number(row.rechazos || 0),
-          porcentajeRechazo: Number(row.porcentaje_rechazo || 0),
-          observaciones: row.observaciones || '',
-          fecha: row.fecha?.slice(0, 10),
-          estado: 'Clasificado'
-        })));
-      })
-      .catch((e) => setError(e.message));
-  }, []);
 
   const handleRowClick = (record) => {
     setSelectedRecord(record);
@@ -67,19 +46,16 @@ const QualityPage = () => {
     setAceptada((max - safeVal).toString());
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setIsSaving(true);
-    const numAceptada = parseInt(aceptada, 10) || 0;
-    const numRechazada = parseInt(rechazada, 10) || 0;
-    const pct = selectedRecord.cantidadOriginal > 0 
-      ? (numRechazada / selectedRecord.cantidadOriginal) * 100 
-      : 0;
-    try {
-      await pb.collection('calidad').update(selectedRecord.id, {
-        rechazos: numRechazada,
-        porcentaje_rechazo: parseFloat(pct.toFixed(1)),
-        observaciones
-      });
+    
+    setTimeout(() => {
+      const numAceptada = parseInt(aceptada, 10) || 0;
+      const numRechazada = parseInt(rechazada, 10) || 0;
+      const pct = selectedRecord.cantidadOriginal > 0 
+        ? (numRechazada / selectedRecord.cantidadOriginal) * 100 
+        : 0;
+
       setRecords(records.map(r => {
         if (r.id === selectedRecord.id) {
           return {
@@ -93,13 +69,11 @@ const QualityPage = () => {
         }
         return r;
       }));
+
       setIsSaving(false);
       setIsModalOpen(false);
       toast.success('Clasificación guardada exitosamente.');
-    } catch (e) {
-      setIsSaving(false);
-      toast.error(e.message);
-    }
+    }, 500);
   };
 
   const getRejectionBadge = (pct) => {
@@ -120,7 +94,6 @@ const QualityPage = () => {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Control de Calidad</h1>
           <p className="text-slate-500 mt-1">Clasificación de mermas y rechazos por lote.</p>
         </div>
-        {error ? <div className="text-red-600 text-sm">{error}</div> : null}
 
         <Card className="shadow-sm overflow-hidden border-t-4 border-t-primary">
           <div className="overflow-x-auto">

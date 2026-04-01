@@ -1,138 +1,423 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { listCostosByRange } from '@/repositories/costosRepository.js';
-import { listHechosByRange } from '@/repositories/produccionRepository.js';
-import { listNomina } from '@/repositories/nominaRepository.js';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
+import { Package, Activity, Box, Users, Wrench, ShieldCheck, DollarSign } from 'lucide-react';
+import { 
+  mockLotes, 
+  mockMedidores, 
+  mockInsumos, 
+  mockNomina, 
+  mockMantenimiento, 
+  mockSaneamiento,
+  mockHistoricalCosts,
+  mockServiceCostsHistory
+} from '@/data/mockData.js';
+import CostDetailModal from '@/components/CostDetailModal.jsx';
+import { usePayrollCalculation } from '@/hooks/useCalculations.js';
 
-const formatCurrency = (value) =>
-  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value || 0);
+const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#EC4899', '#64748B'];
 
-const today = new Date().toISOString().slice(0, 10);
-const firstDay = `${today.slice(0, 8)}01`;
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value);
+};
 
 const DashboardPage = () => {
-  const [costos, setCostos] = useState([]);
-  const [hechos, setHechos] = useState([]);
-  const [nomina, setNomina] = useState([]);
-  const [error, setError] = useState('');
-  const [previewEvents, setPreviewEvents] = useState([]);
-  const [previewWarning, setPreviewWarning] = useState('');
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null });
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [costosRows, hechosRows, nominaRows] = await Promise.all([
-          listCostosByRange(firstDay, today),
-          listHechosByRange(firstDay, today),
-          listNomina('')
-        ]);
-        setCostos(costosRows);
-        setHechos(hechosRows);
-        setNomina(nominaRows);
-        if (costosRows.length === 0 && hechosRows.length === 0) {
-          const response = await fetch(`http://localhost:3001/integration/agricol/preview?date=${today}`);
-          if (response.ok) {
-            const data = await response.json();
-            setPreviewEvents(data.events || []);
-            setPreviewWarning(data.sourceWarning || '');
-          }
-        }
-      } catch (e) {
-        setError(e.message);
+  // --- Calculations ---
+  const lotesTotal = useMemo(() => mockLotes.filter(l => l.estado === 'Valorizado').reduce((sum, l) => sum + l.valorTotal, 0), []);
+  const serviciosTotal = useMemo(() => mockMedidores.reduce((sum, m) => sum + m.historial.reduce((hSum, h) => hSum + h.costoEstimado, 0), 0), []);
+  const insumosTotal = useMemo(() => mockInsumos.reduce((sum, i) => sum + (i.stockActual * i.costoUnitario), 0), []);
+  
+  const { totalCostGeneral: nominasTotal } = usePayrollCalculation(mockNomina);
+  
+  const mantenimientoTotal = useMemo(() => mockMantenimiento.reduce((sum, m) => sum + m.costo, 0), []);
+  const saneamientoTotal = useMemo(() => mockSaneamiento.reduce((sum, s) => sum + s.costo_contratista, 0), []);
+  
+  const generalTotal = lotesTotal + serviciosTotal + insumosTotal + nominasTotal + mantenimientoTotal + saneamientoTotal;
+
+  // --- Chart Data Prep ---
+  const distribucionCostosData = [
+    { name: 'Lotes', value: lotesTotal },
+    { name: 'Servicios', value: serviciosTotal },
+    { name: 'Insumos', value: insumosTotal },
+    { name: 'Nóminas', value: nominasTotal },
+    { name: 'Mantenimiento', value: mantenimientoTotal },
+    { name: 'Saneamiento', value: saneamientoTotal },
+  ];
+
+  const topProveedoresData = useMemo(() => {
+    const provMap = mockLotes.reduce((acc, lote) => {
+      if (lote.estado === 'Valorizado') {
+        acc[lote.proveedor] = (acc[lote.proveedor] || 0) + lote.valorTotal;
       }
-    };
-    load();
+      return acc;
+    }, {});
+    return Object.entries(provMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
   }, []);
 
-  const kpis = useMemo(() => {
-    const costoFases = costos.reduce((sum, row) => sum + (Number(row.costo_total_fase) || 0), 0);
-    const rowsForOps = hechos.length > 0
-      ? hechos.map((row) => ({
-          kg: Number(row.kg_procesados || 0),
-          cajas: Number(row.cajas || 0),
-          rechazo: Number(row.kg_rechazo || 0),
-          horas: Number(row.horas_hombre || 0)
-        }))
-      : previewEvents.map((row) => ({
-          kg: Number(row.kgProcesados || 0),
-          cajas: Number(row.cajas || 0),
-          rechazo: Number(row.kgRechazo || 0),
-          horas: Number(row.horasHombre || 0)
-        }));
-    const kg = rowsForOps.reduce((sum, row) => sum + row.kg, 0);
-    const cajas = rowsForOps.reduce((sum, row) => sum + row.cajas, 0);
-    const rechazo = rowsForOps.reduce((sum, row) => sum + row.rechazo, 0);
-    const horas = rowsForOps.reduce((sum, row) => sum + row.horas, 0);
-    const costoNomina = nomina.reduce((sum, row) => sum + (Number(row.costo_total) || 0), 0);
-    return {
-      costoFases,
-      costoNomina,
-      costoTotal: costoFases + costoNomina,
-      kg,
-      cajas,
-      rechazo,
-      horas,
-      costoKg: kg > 0 ? (costoFases + costoNomina) / kg : 0,
-      costoCaja: cajas > 0 ? (costoFases + costoNomina) / cajas : 0
-    };
-  }, [costos, hechos, nomina, previewEvents]);
+  const fijosVsVariablesData = useMemo(() => {
+    const mantPreventivo = mockMantenimiento.filter(m => m.tipo === 'Preventivo').reduce((sum, m) => sum + m.costo, 0);
+    const mantCorrectivo = mockMantenimiento.filter(m => m.tipo === 'Correctivo').reduce((sum, m) => sum + m.costo, 0);
+    
+    const fijos = nominasTotal + mantPreventivo;
+    const variables = lotesTotal + serviciosTotal + insumosTotal + mantCorrectivo + saneamientoTotal;
+    
+    return [
+      { name: 'Costos Fijos', value: fijos },
+      { name: 'Costos Variables', value: variables }
+    ];
+  }, [nominasTotal, lotesTotal, serviciosTotal, insumosTotal, saneamientoTotal]);
 
-  const costoPorFase = useMemo(() => {
-    const map = {};
-    costos.forEach((row) => {
-      const key = row.expand?.fase_ref?.nombre || row.expand?.fase_ref?.codigo || 'Sin fase';
-      map[key] = (map[key] || 0) + (Number(row.costo_total_fase) || 0);
-    });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [costos]);
+  const horasTrabajoData = useMemo(() => {
+    const reg = mockNomina.reduce((sum, n) => sum + (Number(n.horas_regulares_trabajadas) || 0), 0);
+    const ext = mockNomina.reduce((sum, n) => sum + (Number(n.cantidad_horas_extras) || 0), 0);
+    return [
+      { name: 'Regulares', value: reg },
+      { name: 'Extra', value: ext }
+    ];
+  }, []);
+
+  // --- Modal Handlers ---
+  const openModal = (type) => setModalConfig({ isOpen: true, type });
+  const closeModal = () => setModalConfig({ isOpen: false, type: null });
+
+  const getModalProps = () => {
+    switch (modalConfig.type) {
+      case 'lotes':
+        return {
+          title: 'Detalle de Costos: Lotes',
+          totalCost: lotesTotal,
+          tableData: mockLotes.filter(l => l.estado === 'Valorizado'),
+          columns: [
+            { header: 'Lote ID', accessor: 'loteId', isBold: true },
+            { header: 'Proveedor', accessor: 'proveedor' },
+            { header: 'Variedad', accessor: 'variedad' },
+            { header: 'Cantidad (kg)', accessor: 'cantidad', align: 'right' },
+            { header: 'Valor Total', accessor: 'valorTotal', align: 'right', format: 'currency' }
+          ],
+          chartType: 'bar',
+          chartData: topProveedoresData
+        };
+      case 'servicios':
+        return {
+          title: 'Detalle de Costos: Servicios',
+          totalCost: serviciosTotal,
+          tableData: mockMedidores.flatMap(m => m.historial.map(h => ({ ...h, medidor: m.nombre, tipo: m.tipo }))),
+          columns: [
+            { header: 'Fecha', accessor: 'fecha' },
+            { header: 'Medidor', accessor: 'medidor', isBold: true },
+            { header: 'Tipo', accessor: 'tipo' },
+            { header: 'Consumo', accessor: 'diferencia', align: 'right' },
+            { header: 'Costo Estimado', accessor: 'costoEstimado', align: 'right', format: 'currency' }
+          ],
+          chartType: 'pie',
+          chartData: mockMedidores.map(m => ({
+            name: m.tipo,
+            value: m.historial.reduce((sum, h) => sum + h.costoEstimado, 0)
+          }))
+        };
+      case 'insumos':
+        return {
+          title: 'Detalle de Costos: Insumos (Valorizado en Stock)',
+          totalCost: insumosTotal,
+          tableData: mockInsumos.map(i => ({ ...i, valorTotal: i.stockActual * i.costoUnitario })),
+          columns: [
+            { header: 'Insumo', accessor: 'nombre', isBold: true },
+            { header: 'Categoría', accessor: 'categoria' },
+            { header: 'Stock Actual', accessor: 'stockActual', align: 'right' },
+            { header: 'Costo Unitario', accessor: 'costoUnitario', align: 'right', format: 'currency' },
+            { header: 'Valor Total', accessor: 'valorTotal', align: 'right', format: 'currency' }
+          ],
+          chartType: 'pie',
+          chartData: Object.entries(mockInsumos.reduce((acc, i) => {
+            acc[i.categoria] = (acc[i.categoria] || 0) + (i.stockActual * i.costoUnitario);
+            return acc;
+          }, {})).map(([name, value]) => ({ name, value }))
+        };
+      case 'nominas':
+        return {
+          title: 'Detalle de Costos: Nóminas',
+          dataType: 'nominas',
+          rawData: mockNomina
+        };
+      case 'mantenimiento':
+        return {
+          title: 'Detalle de Costos: Mantenimiento',
+          totalCost: mantenimientoTotal,
+          tableData: mockMantenimiento,
+          columns: [
+            { header: 'Fecha', accessor: 'fecha' },
+            { header: 'Máquina', accessor: 'maquina_id', isBold: true },
+            { header: 'Tipo', accessor: 'tipo' },
+            { header: 'Descripción', accessor: 'descripcion' },
+            { header: 'Costo', accessor: 'costo', align: 'right', format: 'currency' }
+          ],
+          chartType: 'pie',
+          chartData: [
+            { name: 'Preventivo', value: mockMantenimiento.filter(m => m.tipo === 'Preventivo').reduce((sum, m) => sum + m.costo, 0) },
+            { name: 'Correctivo', value: mockMantenimiento.filter(m => m.tipo === 'Correctivo').reduce((sum, m) => sum + m.costo, 0) }
+          ]
+        };
+      case 'saneamiento':
+        return {
+          title: 'Detalle de Costos: Saneamiento',
+          totalCost: saneamientoTotal,
+          tableData: mockSaneamiento,
+          columns: [
+            { header: 'Fecha', accessor: 'fecha' },
+            { header: 'Área', accessor: 'area', isBold: true },
+            { header: 'Tipo Plaga', accessor: 'tipo_plaga' },
+            { header: 'Costo', accessor: 'costo_contratista', align: 'right', format: 'currency' }
+          ],
+          chartType: 'bar',
+          chartData: Object.entries(mockSaneamiento.reduce((acc, s) => {
+            acc[s.area] = (acc[s.area] || 0) + s.costo_contratista;
+            return acc;
+          }, {})).map(([name, value]) => ({ name, value }))
+        };
+      case 'general':
+        return {
+          title: 'Resumen General de Costos',
+          totalCost: generalTotal,
+          tableData: distribucionCostosData.map(d => ({ categoria: d.name, costo: d.value })),
+          columns: [
+            { header: 'Categoría', accessor: 'categoria', isBold: true },
+            { header: 'Costo Total', accessor: 'costo', align: 'right', format: 'currency' }
+          ],
+          chartType: 'pie',
+          chartData: distribucionCostosData
+        };
+      default:
+        return {};
+    }
+  };
+
+  const KPICard = ({ title, value, icon: Icon, onClick, colorClass }) => (
+    <Card 
+      className="cursor-pointer hover:shadow-lg transition-all duration-200 border-l-4 hover:-translate-y-1 bg-white"
+      style={{ borderLeftColor: colorClass }}
+      onClick={onClick}
+    >
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between pb-2">
+          <p className="text-sm font-medium text-slate-500">{title}</p>
+          <div className="h-10 w-10 rounded-full flex items-center justify-center" style={{ backgroundColor: `${colorClass}20` }}>
+            <Icon className="h-5 w-5" style={{ color: colorClass }} />
+          </div>
+        </div>
+        <div className="text-2xl font-bold text-slate-900">{formatCurrency(value)}</div>
+        <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
+          Ver detalles <span className="text-[10px]">→</span>
+        </p>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <>
       <Helmet><title>Dashboard de Costos | AGRICOL</title></Helmet>
-      <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      <div className="space-y-10 max-w-7xl mx-auto pb-12">
+        
+        {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard costo vs producción</h1>
-          <p className="text-slate-500 mt-1">Datos reales de PocketBase integrados con producción.</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard de Costos</h1>
+          <p className="text-slate-500 mt-1">Análisis integral de gastos operativos y administrativos.</p>
         </div>
 
-        {error ? <div className="text-red-600 text-sm">Error de carga: {error}</div> : null}
-        {!error && costos.length === 0 && hechos.length === 0 ? (
-          <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
-            Mostrando preview directo desde API de produccion ({previewEvents.length} eventos). Aun no hay datos persistidos en PocketBase.
+        {/* Section 1: KPIs */}
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-800 border-b border-slate-200 pb-2">Indicadores Principales</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <KPICard title="Costo Total Lotes" value={lotesTotal} icon={Package} colorClass="#10B981" onClick={() => openModal('lotes')} />
+            <KPICard title="Costo Total Servicios" value={serviciosTotal} icon={Activity} colorClass="#3B82F6" onClick={() => openModal('servicios')} />
+            <KPICard title="Costo Total Insumos" value={insumosTotal} icon={Box} colorClass="#F59E0B" onClick={() => openModal('insumos')} />
+            <KPICard title="Costo Total Nóminas" value={nominasTotal} icon={Users} colorClass="#8B5CF6" onClick={() => openModal('nominas')} />
+            <KPICard title="Costo Total Mantenimiento" value={mantenimientoTotal} icon={Wrench} colorClass="#EC4899" onClick={() => openModal('mantenimiento')} />
+            <KPICard title="Costo Total Saneamiento" value={saneamientoTotal} icon={ShieldCheck} colorClass="#14B8A6" onClick={() => openModal('saneamiento')} />
           </div>
-        ) : null}
-        {previewWarning ? (
-          <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3 text-sm">
-            {previewWarning}
+          
+          <div className="mt-6">
+            <Card 
+              className="cursor-pointer hover:shadow-xl transition-all duration-200 border-t-4 border-t-slate-800 bg-slate-900 text-white hover:-translate-y-1"
+              onClick={() => openModal('general')}
+            >
+              <CardContent className="p-8 flex flex-col md:flex-row items-center justify-between">
+                <div>
+                  <p className="text-slate-400 font-medium uppercase tracking-wider text-sm">Costo Total General</p>
+                  <div className="text-4xl md:text-5xl font-extrabold mt-2">{formatCurrency(generalTotal)}</div>
+                </div>
+                <div className="mt-4 md:mt-0 h-16 w-16 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
+                  <DollarSign className="h-8 w-8 text-emerald-400" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        ) : null}
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card><CardHeader><CardTitle className="text-sm">Costo total período</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{formatCurrency(kpis.costoTotal)}</CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Costo por kg</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{formatCurrency(kpis.costoKg)}</CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Costo por caja</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{formatCurrency(kpis.costoCaja)}</CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Kg procesados</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{kpis.kg.toLocaleString()}</CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Cajas producidas</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{kpis.cajas.toLocaleString()}</CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Rechazo (kg)</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{kpis.rechazo.toLocaleString()}</CardContent></Card>
-        </div>
+        {/* Section 2: Charts */}
+        <section className="space-y-6">
+          <h2 className="text-xl font-semibold text-slate-800 border-b border-slate-200 pb-2">Análisis Gráfico</h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Chart 1: Distribución de Costos */}
+            <Card className="shadow-sm border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">Distribución de Costos Totales</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={distribucionCostosData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {distribucionCostosData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader><CardTitle>Costo total por fase</CardTitle></CardHeader>
-          <CardContent>
-            <table className="w-full text-sm">
-              <thead><tr className="text-left border-b"><th className="py-2">Fase</th><th className="py-2 text-right">Costo</th></tr></thead>
-              <tbody>
-                {costoPorFase.map(([fase, total]) => (
-                  <tr key={fase} className="border-b">
-                    <td className="py-2">{fase}</td>
-                    <td className="py-2 text-right font-mono">{formatCurrency(total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+            {/* Chart 2: Costos por Mes */}
+            <Card className="shadow-sm border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">Evolución de Costos (6 Meses)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={mockHistoricalCosts} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                      <XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} tickFormatter={(val) => `$${val/1000000}M`} />
+                      <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{ borderRadius: '8px' }} />
+                      <Line type="monotone" dataKey="costo" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4, fill: '#3B82F6' }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Chart 3: Top Proveedores */}
+            <Card className="shadow-sm border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">Top 5 Proveedores por Costo</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={topProveedoresData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#E2E8F0" />
+                      <XAxis type="number" tickFormatter={(val) => `$${val/1000000}M`} axisLine={false} tickLine={false} tick={{ fill: '#64748B' }} />
+                      <YAxis dataKey="name" type="category" width={120} axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 11 }} />
+                      <Tooltip formatter={(value) => formatCurrency(value)} cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px' }} />
+                      <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} barSize={24} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Chart 4: Fijos vs Variables */}
+            <Card className="shadow-sm border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">Costos Fijos vs Variables</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={fijosVsVariablesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748B' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B' }} tickFormatter={(val) => `$${val/1000000}M`} />
+                      <Tooltip formatter={(value) => formatCurrency(value)} cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px' }} />
+                      <Bar dataKey="value" fill="#8B5CF6" radius={[4, 4, 0, 0]} barSize={60}>
+                        {fijosVsVariablesData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={index === 0 ? '#64748B' : '#8B5CF6'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Chart 5: Evolución Servicios */}
+            <Card className="shadow-sm border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">Evolución Costos de Servicios (10 Días)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={mockServiceCostsHistory} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                      <XAxis dataKey="dia" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 11 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 11 }} tickFormatter={(val) => `$${val/1000}k`} />
+                      <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{ borderRadius: '8px' }} />
+                      <Line type="monotone" dataKey="costo" stroke="#F59E0B" strokeWidth={3} dot={{ r: 3, fill: '#F59E0B' }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Chart 6: Horas de Trabajo */}
+            <Card className="shadow-sm border border-slate-200">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-slate-800">Distribución de Horas de Trabajo</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={horasTrabajoData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={0}
+                        outerRadius={100}
+                        dataKey="value"
+                      >
+                        <Cell fill="#10B981" /> {/* Regulares */}
+                        <Cell fill="#3B82F6" /> {/* Extra */}
+                      </Pie>
+                      <Tooltip formatter={(value) => `${value} hrs`} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+          </div>
+        </section>
+
+        {/* Detail Modal */}
+        <CostDetailModal 
+          isOpen={modalConfig.isOpen} 
+          onClose={closeModal} 
+          {...getModalProps()} 
+        />
+
       </div>
     </>
   );

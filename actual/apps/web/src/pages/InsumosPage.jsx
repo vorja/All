@@ -1,30 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
+import { mockInsumos } from '@/data/mockData.js';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Plus, Minus, AlertTriangle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { listInsumos, updateInsumo } from '@/repositories/insumosRepository.js';
 
 const InsumosPage = () => {
-  const [insumos, setInsumos] = useState([]);
+  const [insumos, setInsumos] = useState(mockInsumos);
   const [selectedItem, setSelectedItem] = useState(null);
   const [modalType, setModalType] = useState(null); // 'entrada' or 'salida'
   const [cantidad, setCantidad] = useState('');
-  const [error, setError] = useState('');
+  const [observacion, setObservacion] = useState('');
 
-  useEffect(() => {
-    listInsumos().then(setInsumos).catch((e) => setError(e.message));
-  }, []);
+  const categories = ['Aceites y Químicos', 'Empaque', 'Utilidades'];
 
   const openModal = (item, type) => {
     setSelectedItem(item);
     setModalType(type);
     setCantidad('');
+    setObservacion('');
   };
 
   const closeModal = () => {
@@ -32,27 +32,27 @@ const InsumosPage = () => {
     setModalType(null);
   };
 
-  const handleTransaction = async () => {
+  const handleTransaction = () => {
     const qty = Number(cantidad);
     if (!qty || qty <= 0) {
       toast.error('Ingrese una cantidad válida mayor a 0');
       return;
     }
 
-    const currentStock = Number(selectedItem.stock_actual || 0);
-    if (modalType === 'salida' && qty > currentStock) {
-      toast.error(`Stock insuficiente. Máximo disponible: ${currentStock}`);
+    if (modalType === 'salida' && qty > selectedItem.stockActual) {
+      toast.error(`Stock insuficiente. Máximo disponible: ${selectedItem.stockActual}`);
       return;
     }
 
-    const newStock = modalType === 'entrada' ? currentStock + qty : currentStock - qty;
-    try {
-      const updated = await updateInsumo(selectedItem.id, { stock_actual: newStock });
-      setInsumos((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-    } catch (e) {
-      toast.error(e.message);
-      return;
-    }
+    setInsumos(prev => prev.map(item => {
+      if (item.id === selectedItem.id) {
+        const newStock = modalType === 'entrada' 
+          ? item.stockActual + qty 
+          : item.stockActual - qty;
+        return { ...item, stockActual: newStock };
+      }
+      return item;
+    }));
 
     toast.success(`${modalType === 'entrada' ? 'Entrada' : 'Salida'} registrada exitosamente`);
     closeModal();
@@ -70,17 +70,30 @@ const InsumosPage = () => {
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Control de Insumos</h1>
-          <p className="text-slate-500 mt-1">Gestión sobre colección real `insumos`.</p>
+          <p className="text-slate-500 mt-1">Gestión dinámica de inventario con conversiones de unidades.</p>
         </div>
-        {error ? <div className="text-red-600 text-sm">{error}</div> : null}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {insumos.map((item) => {
-                  const stockActual = Number(item.stock_actual || 0);
-                  const stockMinimo = Number(item.stock_minimo || item.minimo || 0);
-                  const status = getStockStatus(stockActual, stockMinimo);
+        <Tabs defaultValue={categories[0]} className="w-full">
+          <TabsList className="w-full justify-start overflow-x-auto bg-slate-100 p-1 rounded-xl h-auto flex-wrap gap-1">
+            {categories.map(cat => (
+              <TabsTrigger 
+                key={cat} 
+                value={cat}
+                className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm px-5 py-2.5 text-sm font-medium transition-all"
+              >
+                {cat}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {categories.map(cat => (
+            <TabsContent key={cat} value={cat} className="mt-6 outline-none">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {insumos.filter(i => i.categoria === cat).map(item => {
+                  const status = getStockStatus(item.stockActual, item.stockMinimo);
                   const StatusIcon = status.icon;
-                  const costoUnitario = Number(item.costoUnitario || 0);
+                  const altStock = item.stockActual * item.factorConversion;
+                  const altMin = item.stockMinimo * item.factorConversion;
                   
                   return (
                     <Card key={item.id} className="card-shadow overflow-hidden flex flex-col group hover:shadow-md transition-all duration-300">
@@ -110,16 +123,18 @@ const InsumosPage = () => {
                             <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">Stock Actual</p>
                             <div className="flex flex-col">
                               <span className="text-2xl font-mono font-bold text-slate-900">
-                                {stockActual} <span className="text-sm font-sans font-normal text-slate-500">{item.unidad || '-'}</span>
+                                {item.stockActual} <span className="text-sm font-sans font-normal text-slate-500">{item.unidad}</span>
                               </span>
-                              <span className="text-sm font-mono text-slate-500 mt-0.5">Costo unitario: {costoUnitario.toLocaleString('es-CO')}</span>
+                              <span className="text-sm font-mono text-slate-500 mt-0.5">
+                                = {altStock.toLocaleString()} {item.unidadAlternativa}
+                              </span>
                             </div>
                           </div>
                           
                           <div className="flex justify-between items-center px-1">
                             <span className="text-xs font-medium text-slate-500">Mínimo requerido:</span>
                             <span className="text-sm font-mono font-medium text-slate-700">
-                              {stockMinimo} {item.unidad || '-'}
+                              {item.stockMinimo} {item.unidad} <span className="text-slate-400">({altMin.toLocaleString()} {item.unidadAlternativa})</span>
                             </span>
                           </div>
                         </div>
@@ -144,6 +159,9 @@ const InsumosPage = () => {
                   );
                 })}
               </div>
+            </TabsContent>
+          ))}
+        </Tabs>
 
         <Dialog open={!!modalType} onOpenChange={(open) => !open && closeModal()}>
           <DialogContent className="sm:max-w-md">
@@ -158,7 +176,7 @@ const InsumosPage = () => {
               <div className="space-y-6 py-4">
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <h4 className="font-bold text-slate-900 text-lg">{selectedItem.nombre}</h4>
-                  <p className="text-sm text-slate-500 font-mono mt-1">Stock actual: {selectedItem.stock_actual} {selectedItem.unidad || '-'}</p>
+                  <p className="text-sm text-slate-500 font-mono mt-1">Stock actual: {selectedItem.stockActual} {selectedItem.unidad}</p>
                 </div>
 
                 <div className="space-y-3">
@@ -177,6 +195,20 @@ const InsumosPage = () => {
                     />
                     <span className="text-lg font-medium text-slate-500 w-24">{selectedItem.unidad}</span>
                   </div>
+                  {cantidad && !isNaN(cantidad) && (
+                    <p className="text-sm text-slate-500 font-mono">
+                      Equivale a: {(Number(cantidad) * selectedItem.factorConversion).toLocaleString()} {selectedItem.unidadAlternativa}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700">Observación (Opcional)</Label>
+                  <Input 
+                    value={observacion}
+                    onChange={(e) => setObservacion(e.target.value)}
+                    placeholder="Motivo, proveedor, o destino..."
+                  />
                 </div>
               </div>
             )}

@@ -1,291 +1,207 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from '@/components/ui/table';
+import { mockLotes } from '@/data/mockData.js';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { listLotesConProduccion, valorizarRecepcionLote } from '@/repositories/produccionRepository.js';
-import { toast } from '@/hooks/use-toast';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Loader2 } from 'lucide-react';
-import PriceAssignmentModal from '@/components/PriceAssignmentModal.jsx';
-
-const formatCop = (value) =>
-  new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    maximumFractionDigits: 0
-  }).format(Number(value) || 0);
-
-const formatKg = (value) =>
-  new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 }).format(Number(value) || 0);
+import { PackageOpen, CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const LotsPage = () => {
-  const [lots, setLots] = useState([]);
-  const [error, setError] = useState('');
-  const [sourceWarning, setSourceWarning] = useState('');
-  const [sourceUsed, setSourceUsed] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({
-    from: '',
-    to: '',
-    estado: 'todos'
-  });
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [lots, setLots] = useState(mockLotes);
   const [selectedLot, setSelectedLot] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [precioInput, setPrecioInput] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const loadLots = () => {
-    setLoading(true);
-    setError('');
-    listLotesConProduccion(filters)
-      .then((result) => {
-        setLots(result.lotes || []);
-        setSourceWarning(result.sourceWarning || '');
-        setSourceUsed(result.sourceUsed || '');
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+  const formatCurrency = (value) => {
+    if (value === null || value === undefined) return '$0';
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      maximumFractionDigits: 0
+    }).format(value);
   };
 
-  useEffect(() => {
-    loadLots();
-  }, []);
-
-  const openValorizar = (lot) => {
-    if (lot.estado === 'Valorizado') return;
+  const handleRowClick = (lot) => {
     setSelectedLot(lot);
-    setDialogOpen(true);
+    setPrecioInput(lot.precioUnitario ? lot.precioUnitario.toString() : '');
+    setIsModalOpen(true);
   };
 
-  const closeDialog = () => {
-    setDialogOpen(false);
-    setSelectedLot(null);
+  const handlePriceChange = (e) => {
+    const val = e.target.value.replace(/\D/g, '');
+    setPrecioInput(val);
   };
 
-  const handleGuardar = async (lotWithCost) => {
-    const precio = Number(lotWithCost?.precio_kg);
-    if (!selectedLot || !Number.isFinite(precio) || precio < 0) {
-      toast({
-        title: 'Precio inválido',
-        description: 'Ingresa un precio por kg válido (COP).',
-        variant: 'destructive'
-      });
+  const handleSave = () => {
+    const price = parseInt(precioInput, 10);
+    if (!price || price <= 0) {
+      toast.error('El precio por Kg debe ser mayor a 0.');
       return;
     }
-    setSaving(true);
-    try {
-      await valorizarRecepcionLote(selectedLot.recepcion_id, precio);
-      toast({
-        title: 'Lote valorizado',
-        description: 'Los costos se guardaron en PocketBase.'
-      });
-      closeDialog();
-      loadLots();
-    } catch (e) {
-      toast({
-        title: 'Error al guardar',
-        description: e.message || 'No se pudo completar la operación.',
-        variant: 'destructive'
-      });
-    } finally {
-      setSaving(false);
-    }
+
+    setIsSaving(true);
+    
+    // Simulate API call
+    setTimeout(() => {
+      const valorTotal = selectedLot.cantidad * price;
+      
+      setLots(lots.map(lot => {
+        if (lot.id === selectedLot.id) {
+          return {
+            ...lot,
+            precioUnitario: price,
+            valorTotal: valorTotal,
+            estado: 'Valorizado'
+          };
+        }
+        return lot;
+      }));
+
+      setIsSaving(false);
+      setIsModalOpen(false);
+      toast.success(`Lote ${selectedLot.loteId} valorizado exitosamente.`);
+    }, 600);
   };
+
+  const currentPrice = parseInt(precioInput, 10) || 0;
+  const calculatedTotal = selectedLot ? selectedLot.cantidad * currentPrice : 0;
 
   return (
     <>
-      <Helmet>
-        <title>Valorización MP | Recepción</title>
-      </Helmet>
+      <Helmet><title>Recepción de Lotes | AGRICOL</title></Helmet>
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Valorización de lotes de materia prima
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Ingresos crudos desde recepción (MySQL), costos en PocketBase.
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Recepción de Lotes</h1>
+          <p className="text-slate-500 mt-1">Gestión y valorización de lotes recibidos.</p>
         </div>
 
-        {sourceUsed ? (
-          <p className="text-xs text-muted-foreground">
-            Fuente: <span className="font-mono">{sourceUsed}</span>
-          </p>
-        ) : null}
-
-        {(error ||
-          sourceWarning ||
-          (!loading && lots.length === 0)) ? (
-          <Alert variant="destructive" className="border-destructive/80">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>
-              {error ? 'Error al cargar lotes' : 'Aviso sobre los datos'}
-            </AlertTitle>
-            <AlertDescription className="font-mono text-xs whitespace-pre-wrap break-words">
-              {error ||
-                sourceWarning ||
-                'No hay registros en la tabla para los filtros aplicados o la lista está vacía.'}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Filtros</CardTitle>
-            <CardDescription>Rango de fechas y estado de valorización.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-              <div className="space-y-2">
-                <Label htmlFor="from">Desde</Label>
-                <Input
-                  id="from"
-                  type="date"
-                  value={filters.from}
-                  onChange={(e) => setFilters((p) => ({ ...p, from: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="to">Hasta</Label>
-                <Input
-                  id="to"
-                  type="date"
-                  value={filters.to}
-                  onChange={(e) => setFilters((p) => ({ ...p, to: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Estado</Label>
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={filters.estado}
-                  onChange={(e) => setFilters((p) => ({ ...p, estado: e.target.value }))}
-                >
-                  <option value="todos">Todos</option>
-                  <option value="pendiente">Pendiente</option>
-                  <option value="valorizado">Valorizado</option>
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" onClick={loadLots} disabled={loading}>
-                  {loading ? 'Cargando…' : 'Aplicar'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setFilters({ from: '', to: '', estado: 'todos' });
-                    setTimeout(loadLots, 0);
-                  }}
-                >
-                  Limpiar
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-t-4 border-t-primary shadow-sm">
-          <CardHeader>
-            <CardTitle>Lotes de recepción</CardTitle>
-            <CardDescription>
-              Datos de <code className="text-xs bg-muted px-1 rounded">bd_patacon.registro_recepcion_materia_prima</code>
-              {' '}cruzados con costos en PocketBase (<code className="text-xs bg-muted px-1 rounded">lotes_produccion_ext</code>).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 sm:p-2">
-            {loading ? (
-              <div className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Cargando lotes desde MySQL...</span>
-              </div>
-            ) : lots.length === 0 ? (
-              <div className="py-10 px-4 text-center text-muted-foreground">
-                <p className="text-sm font-medium">No hay lotes disponibles para los filtros actuales.</p>
-                <p className="text-xs mt-1">Ajusta el rango de fechas o ejecuta la sincronización desde Patacon.</p>
-              </div>
-            ) : (
-              <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Lote ID</TableHead>
-                  <TableHead>Proveedor</TableHead>
-                  <TableHead className="text-right">Cantidad (kg)</TableHead>
-                  <TableHead className="text-right">Precio / kg</TableHead>
-                  <TableHead className="text-right">Valor total</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right w-[120px]">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+        <Card className="card-shadow overflow-hidden border-t-4 border-t-primary">
+          <div className="overflow-x-auto">
+            <table className="table-professional">
+              <thead>
+                <tr>
+                  <th>Lote ID</th>
+                  <th>Proveedor</th>
+                  <th className="text-right">Cantidad (Kg)</th>
+                  <th className="text-right">Precio por Kg</th>
+                  <th className="text-right">Valor Total</th>
+                  <th>Fecha</th>
+                  <th className="text-center">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
                 {lots.map((lot) => (
-                  <TableRow
-                    key={lot.id}
-                    className={
-                      lot.estado === 'Pendiente'
-                        ? 'cursor-pointer hover:bg-muted/80'
-                        : 'hover:bg-muted/40'
-                    }
-                    onClick={() => {
-                      if (lot.estado === 'Pendiente') openValorizar(lot);
-                    }}
-                  >
-                    <TableCell className="font-mono font-medium">{lot.id_lote}</TableCell>
-                    <TableCell>{lot.proveedor}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatKg(lot.cantidad_kg)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCop(lot.precio_kg)}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">{formatCop(lot.valor_total)}</TableCell>
-                    <TableCell className="text-muted-foreground">{lot.fecha || '—'}</TableCell>
-                    <TableCell>
+                  <tr key={lot.id} onClick={() => handleRowClick(lot)} className="cursor-pointer">
+                    <td className="font-medium text-slate-900 flex items-center gap-2">
+                      <PackageOpen className="h-4 w-4 text-slate-400" />
+                      {lot.loteId}
+                    </td>
+                    <td className="text-slate-700">{lot.proveedor}</td>
+                    <td className="text-right font-mono text-slate-700 text-base">{lot.cantidad.toLocaleString()}</td>
+                    <td className="text-right font-mono text-slate-600">
+                      {lot.precioUnitario > 0 ? formatCurrency(lot.precioUnitario) : '-'}
+                    </td>
+                    <td className="text-right font-mono font-bold text-slate-900 text-base">
+                      {lot.valorTotal > 0 ? formatCurrency(lot.valorTotal) : '-'}
+                    </td>
+                    <td className="text-slate-600">{lot.fecha}</td>
+                    <td className="text-center">
                       {lot.estado === 'Valorizado' ? (
-                        <Badge className="bg-emerald-800 text-white border-transparent hover:bg-emerald-800">
-                          Valorizado
+                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-emerald-200 gap-1.5 px-3 py-1 text-xs font-medium">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Valorizado
                         </Badge>
                       ) : (
-                        <Badge
-                          variant="secondary"
-                          className="bg-amber-100 text-amber-950 border-amber-200"
-                        >
-                          Pendiente
+                        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200 gap-1.5 px-3 py-1 text-xs font-medium">
+                          <Clock className="h-3.5 w-3.5" /> Pendiente
                         </Badge>
                       )}
-                    </TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      {lot.estado === 'Pendiente' ? (
-                        <Button size="sm" variant="default" onClick={() => openValorizar(lot)}>
-                          Valorizar
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-              </Table>
-            )}
-          </CardContent>
+              </tbody>
+            </table>
+          </div>
         </Card>
-      </div>
 
-      <PriceAssignmentModal
-        isOpen={dialogOpen}
-        onClose={closeDialog}
-        lot={selectedLot}
-        onSave={handleGuardar}
-        saving={saving}
-      />
+        <Dialog open={isModalOpen} onOpenChange={(open) => !open && !isSaving && setIsModalOpen(false)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold text-slate-900">Valorizar Lote</DialogTitle>
+            </DialogHeader>
+            
+            {selectedLot && (
+              <div className="space-y-6 py-4">
+                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-5 rounded-xl border border-slate-100">
+                  <div>
+                    <Label className="text-slate-500 text-xs uppercase tracking-wider">Lote ID</Label>
+                    <div className="font-medium text-slate-900">{selectedLot.loteId}</div>
+                  </div>
+                  <div>
+                    <Label className="text-slate-500 text-xs uppercase tracking-wider">Proveedor</Label>
+                    <div className="font-medium text-slate-900">{selectedLot.proveedor}</div>
+                  </div>
+                  <div>
+                    <Label className="text-slate-500 text-xs uppercase tracking-wider">Tipo de Plátano</Label>
+                    <div className="font-medium text-slate-900">{selectedLot.tipo || '-'}</div>
+                  </div>
+                  <div>
+                    <Label className="text-slate-500 text-xs uppercase tracking-wider">Variedad</Label>
+                    <div className="font-medium text-slate-900">{selectedLot.variedad || '-'}</div>
+                  </div>
+                  <div className="col-span-2 pt-3 border-t border-slate-200">
+                    <Label className="text-slate-500 text-xs uppercase tracking-wider">Cantidad Recibida</Label>
+                    <div className="font-mono text-2xl font-bold text-primary">{selectedLot.cantidad.toLocaleString()} Kg</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="precioUnitario" className="text-sm font-semibold text-slate-900">
+                      Precio por Kg (COP) <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-mono">$</span>
+                      <Input
+                        id="precioUnitario"
+                        type="text"
+                        className="pl-8 font-mono font-medium h-11"
+                        value={precioInput ? new Intl.NumberFormat('es-CO').format(precioInput) : ''}
+                        onChange={handlePriceChange}
+                        placeholder="0"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold text-slate-900">
+                      Valor Total (COP)
+                    </Label>
+                    <div className="h-11 px-3 py-2 bg-slate-100 border border-slate-200 rounded-md flex items-center text-slate-900 font-mono font-bold text-lg">
+                      {formatCurrency(calculatedTotal)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-3 sm:gap-0">
+              <Button variant="outline" onClick={() => setIsModalOpen(false)} disabled={isSaving} className="w-full sm:w-auto">
+                Cancelar
+              </Button>
+              <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white">
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Guardar Valorización
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </>
   );
 };

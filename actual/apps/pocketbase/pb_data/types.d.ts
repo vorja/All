@@ -1378,7 +1378,7 @@ type _TygojaAny = any
  * number should be high, but exceeding it may degrade performance or
  * cause other issues.
  */
-declare namespace os {
+namespace os {
  interface readdirMode extends Number{}
  interface File {
   /**
@@ -2673,8 +2673,8 @@ declare namespace os {
  }
  interface rootFS extends Root{}
  interface rootFS {
-  open(name: string): File
-}
+  open(name: string): fs.File
+ }
  interface rootFS {
   readDir(name: string): Array<DirEntry>
  }
@@ -2836,7 +2836,7 @@ declare namespace os {
  * that always use forward slashes regardless of the operating
  * system, see the [path] package.
  */
-declare namespace filepath {
+namespace filepath {
  interface match {
   /**
    * Match reports whether name matches the shell file name pattern.
@@ -3169,7 +3169,7 @@ declare namespace filepath {
  }
 }
 
-declare namespace security {
+namespace security {
  interface s256Challenge {
   /**
    * S256Challenge creates base64 encoded sha256 challenge string derived from code.
@@ -3315,7 +3315,7 @@ declare namespace security {
 /**
  * Package validation provides configurable and extensible rules for validating data of various types.
  */
-declare namespace ozzo_validation {
+namespace ozzo_validation {
  /**
   * Error interface represents an validation error
   */
@@ -3333,7 +3333,7 @@ declare namespace ozzo_validation {
 /**
  * Package dbx provides a set of DB-agnostic and easy-to-use query building methods for relational databases.
  */
-declare namespace dbx {
+namespace dbx {
  /**
   * Builder supports building SQL statements in a DB-agnostic way.
   * Builder mainly provides two sets of query building methods: those building SELECT statements
@@ -5411,7 +5411,7 @@ declare namespace dbx {
  }
 }
 
-declare namespace filesystem {
+namespace filesystem {
  /**
   * FileReader defines an interface for a file resource reader.
   */
@@ -5788,7 +5788,7 @@ declare namespace filesystem {
  * security implications of doing so.
  * See https://go.dev/blog/path-security for more information.
  */
-declare namespace exec {
+namespace exec {
  interface command {
   /**
    * Command returns the [Cmd] struct to execute the named program with
@@ -5823,7 +5823,7 @@ declare namespace exec {
  * 
  * It defines the main PocketBase App interface and its base implementation.
  */
-declare namespace core {
+namespace core {
  /**
   * App defines the main PocketBase app interface.
   * 
@@ -12077,9 +12077,9 @@ declare namespace core {
   type: string
  }
  type _sbYbsGm = Field
- interface fieldWithType extends Omit<Field, 'type'> {
+ interface fieldWithType extends _sbYbsGm {
   type: string
-}
+ }
  interface fieldWithType {
   unmarshalJSON(data: string|Array<number>): void
  }
@@ -13718,7 +13718,7 @@ declare namespace core {
  * Package mails implements various helper methods for sending common
  * emails like forgotten password, verification, etc.
  */
-declare namespace mails {
+namespace mails {
  interface sendRecordAuthAlert {
   /**
    * SendRecordAuthAlert sends a new device login alert to the specified auth record.
@@ -13753,7 +13753,7 @@ declare namespace mails {
  }
 }
 
-declare namespace forms {
+namespace forms {
  // @ts-ignore
  import validation = ozzo_validation
  /**
@@ -13940,7 +13940,7 @@ declare namespace forms {
  }
 }
 
-declare namespace apis {
+namespace apis {
  interface toApiError {
   /**
    * ToApiError wraps err into ApiError instance (if not already).
@@ -14616,7 +14616,7 @@ declare namespace apis {
  * 	).Render(map[string]any{"name": "Jane"})
  * ```
  */
-declare namespace template {
+namespace template {
  interface newRegistry {
   /**
    * NewRegistry creates and initializes a new templates registry with
@@ -14696,7 +14696,7 @@ declare namespace template {
  }
 }
 
-declare namespace pocketbase {
+namespace pocketbase {
  /**
   * PocketBase defines a PocketBase app launcher.
   * 
@@ -14797,7 +14797,7 @@ declare namespace pocketbase {
  * 
  * Values containing the types defined in this package should not be copied.
  */
-declare namespace sync {
+namespace sync {
  // @ts-ignore
  import isync = sync
  /**
@@ -14950,7 +14950,7 @@ declare namespace sync {
  * various implementations, unless otherwise informed clients should not
  * assume they are safe for parallel execution.
  */
-declare namespace io {
+namespace io {
  /**
   * Reader is the interface that wraps the basic Read method.
   * 
@@ -15022,7 +15022,7 @@ declare namespace io {
  * Package bytes implements functions for the manipulation of byte slices.
  * It is analogous to the facilities of the [strings] package.
  */
-declare namespace bytes {
+namespace bytes {
  /**
   * A Reader implements the [io.Reader], [io.ReaderAt], [io.WriterTo], [io.Seeker],
   * [io.ByteScanner], and [io.RuneScanner] interfaces by reading from
@@ -15126,7 +15126,7 @@ declare namespace bytes {
  * and most new code should prefer that package where possible.
  * See https://golang.org/s/go1.4-syscall for more information.
  */
-declare namespace syscall {
+namespace syscall {
  // @ts-ignore
  import errpkg = errors
  interface SysProcAttr {
@@ -15347,7 +15347,7 @@ declare namespace syscall {
  * On older Windows versions, the default resolution is ~16ms, but
  * a higher resolution may be requested using [golang.org/x/sys/windows.TimeBeginPeriod].
  */
-declare namespace time {
+namespace time {
  interface Time {
   /**
    * String returns the time formatted using the format string
@@ -15862,7 +15862,7 @@ declare namespace time {
  * See the [testing/fstest] package for support with testing
  * implementations of file systems.
  */
-declare namespace fs {
+namespace fs {
  /**
   * An FS provides access to a hierarchical file system.
   * 
@@ -16055,7 +16055,7 @@ declare namespace fs {
  interface WalkDirFunc {(path: string, d: DirEntry, err: Error): void }
 }
 
-declare namespace store {
+namespace store {
  /**
   * Store defines a concurrent safe in memory key-value data store.
   */
@@ -16236,7 +16236,7 @@ declare namespace store {
  * See https://go.dev/blog/context for example code for a server that uses
  * Contexts.
  */
-declare namespace context {
+namespace context {
  /**
   * A Context carries a deadline, a cancellation signal, and other values across
   * API boundaries.
@@ -16351,7 +16351,7 @@ declare namespace context {
  * object, creating another object (Reader or Writer) that also implements
  * the interface but provides buffering and some help for textual I/O.
  */
-declare namespace bufio {
+namespace bufio {
  /**
   * ReadWriter stores pointers to a [Reader] and a [Writer].
   * It implements [io.ReadWriter].
@@ -16459,7 +16459,7 @@ declare namespace bufio {
  * On Windows, in Go 1.18.x and earlier, the resolver always used C
  * library functions, such as GetAddrInfo and DnsQuery.
  */
-declare namespace net {
+namespace net {
  /**
   * Conn is a generic stream-oriented network connection.
   * 
@@ -16711,7 +16711,7 @@ declare namespace net {
  * 
  * Unicode character classes are those in [unicode.Categories] and [unicode.Scripts].
  */
-declare namespace syntax {
+namespace syntax {
  /**
   * Flags control the behavior of the parser and record information about regexp context.
   */
@@ -16722,7 +16722,7 @@ declare namespace syntax {
  * Package cobra is a commander providing a simple interface to create powerful modern CLI interfaces.
  * In addition to providing an interface, Cobra simultaneously provides a controller to organize your application code.
  */
-declare namespace cobra {
+namespace cobra {
  interface Command {
   /**
    * GenBashCompletion generates bash completion file and writes to the passed writer.
@@ -17800,7 +17800,7 @@ declare namespace cobra {
  }
 }
 
-declare namespace exec {
+namespace exec {
  /**
   * Cmd represents an external command being prepared or run.
   * 
@@ -18100,7 +18100,7 @@ declare namespace exec {
  * Package types implements some commonly used db serializable types
  * like datetime, json, etc.
  */
-declare namespace types {
+namespace types {
  /**
   * DateTime represents a [time.Time] instance in UTC that is wrapped
   * and serialized using the app default date layout.
@@ -18370,7 +18370,7 @@ declare namespace types {
  * 
  * See README.md for more info.
  */
-declare namespace jwt {
+namespace jwt {
  /**
   * MapClaims is a claims type that uses the map[string]any for JSON
   * decoding. This is the default claims type if you don't supply one
@@ -18436,7 +18436,7 @@ declare namespace jwt {
  * This limit may be adjusted with the GODEBUG=multipartmaxparts=<value>
  * setting.
  */
-declare namespace multipart {
+namespace multipart {
  /**
   * A FileHeader describes a file part of a multipart request.
   */
@@ -18572,7 +18572,7 @@ declare namespace multipart {
  * package takes precedence over the net/http package's built-in HTTP/2
  * support.
  */
-declare namespace http {
+namespace http {
  // @ts-ignore
  import mathrand = rand
  /**
@@ -19460,7 +19460,7 @@ declare namespace http {
  }
 }
 
-declare namespace auth {
+namespace auth {
  /**
   * Provider defines a common interface for an OAuth2 client.
   */
@@ -19611,7 +19611,7 @@ declare namespace auth {
  }
 }
 
-declare namespace hook {
+namespace hook {
  /**
   * Event implements [Resolver] and it is intended to be used as a base
   * Hook event that you can embed in your custom typed event structs.
@@ -19789,7 +19789,7 @@ declare namespace hook {
  * For usage examples, see the wiki page at
  * https://golang.org/s/sqlwiki.
  */
-declare namespace sql {
+namespace sql {
  /**
   * TxOptions holds the transaction options to be used in [DB.BeginTx].
   */
@@ -20451,7 +20451,7 @@ declare namespace sql {
  }
 }
 
-declare namespace search {
+namespace search {
  /**
   * Result defines the returned search result structure.
   */
@@ -20512,7 +20512,7 @@ declare namespace search {
  * interfaces and struct options as gocloud.dev/blob, therefore the
  * credits goes to the original Go Cloud Development Kit Authors.
  */
-declare namespace blob {
+namespace blob {
  /**
   * ListObject represents a single blob returned from List.
   */
@@ -20657,7 +20657,7 @@ declare namespace blob {
  }
 }
 
-declare namespace router {
+namespace router {
  // @ts-ignore
  import validation = ozzo_validation
  /**
@@ -20940,7 +20940,7 @@ declare namespace router {
  }
 }
 
-declare namespace mailer {
+namespace mailer {
  /**
   * Message defines a generic email message struct.
   */
@@ -20968,7 +20968,7 @@ declare namespace mailer {
  }
 }
 
-declare namespace subscriptions {
+namespace subscriptions {
  /**
   * Broker defines a struct for managing subscriptions clients.
   */
@@ -21483,7 +21483,7 @@ declare namespace subscriptions {
  * 
  * For a guide to writing a custom handler, see https://golang.org/s/slog-handler-guide.
  */
-declare namespace slog {
+namespace slog {
  // @ts-ignore
  import loginternal = internal
  /**
@@ -21612,7 +21612,7 @@ declare namespace slog {
  * 	c.Start()
  * ```
  */
-declare namespace cron {
+namespace cron {
  /**
   * Cron is a crontab-like struct for tasks/jobs scheduling.
   */
@@ -21697,7 +21697,7 @@ declare namespace cron {
  }
 }
 
-declare namespace sync {
+namespace sync {
  // @ts-ignore
  import isync = sync
  /**
@@ -21710,7 +21710,7 @@ declare namespace sync {
  }
 }
 
-declare namespace io {
+namespace io {
  /**
   * WriteCloser is the interface that groups the basic Write and Close methods.
   */
@@ -21719,7 +21719,7 @@ declare namespace io {
  }
 }
 
-declare namespace bufio {
+namespace bufio {
  /**
   * Reader implements buffering for an io.Reader object.
   * A new Reader is created by calling [NewReader] or [NewReaderSize];
@@ -21983,7 +21983,7 @@ declare namespace bufio {
  }
 }
 
-declare namespace syscall {
+namespace syscall {
  // @ts-ignore
  import errpkg = errors
  /**
@@ -22026,7 +22026,7 @@ declare namespace syscall {
  }
 }
 
-declare namespace time {
+namespace time {
  /**
   * A Month specifies a month of the year (January = 1, ...).
   */
@@ -22068,13 +22068,13 @@ declare namespace time {
  }
 }
 
-declare namespace fs {
+namespace fs {
 }
 
-declare namespace context {
+namespace context {
 }
 
-declare namespace net {
+namespace net {
  /**
   * Addr represents a network end point address.
   * 
@@ -22094,7 +22094,7 @@ declare namespace net {
 /**
  * Package url parses URLs and implements query escaping.
  */
-declare namespace url {
+namespace url {
  /**
   * A URL represents a parsed URL (technically, a URI reference).
   * 
@@ -22332,7 +22332,7 @@ declare namespace url {
  }
 }
 
-declare namespace jwt {
+namespace jwt {
  /**
   * NumericDate represents a JSON numeric date value, as referenced at
   * https://datatracker.ietf.org/doc/html/rfc7519#section-2.
@@ -22392,7 +22392,7 @@ declare namespace jwt {
  * [Conn], a convenient packaging of [Reader], [Writer], and [Pipeline] for use
  * with a single network connection.
  */
-declare namespace textproto {
+namespace textproto {
  /**
   * A MIMEHeader represents a MIME-style header mapping
   * keys to sets of values.
@@ -22441,7 +22441,7 @@ declare namespace textproto {
  }
 }
 
-declare namespace multipart {
+namespace multipart {
  interface Reader {
   /**
    * ReadForm parses an entire multipart message whose parts have
@@ -22509,7 +22509,7 @@ declare namespace multipart {
  }
 }
 
-declare namespace http {
+namespace http {
  /**
   * A Cookie represents an HTTP cookie as sent in the Set-Cookie header of an
   * HTTP response or the Cookie header of an HTTP request.
@@ -22924,7 +22924,7 @@ declare namespace http {
  }
 }
 
-declare namespace sql {
+namespace sql {
  /**
   * IsolationLevel is the transaction isolation level used in [TxOptions].
   */
@@ -23127,13 +23127,13 @@ declare namespace sql {
  }
 }
 
-declare namespace store {
+namespace store {
 }
 
-declare namespace types {
+namespace types {
 }
 
-declare namespace search {
+namespace search {
  /**
   * MultiMatchSubquery defines a multi-match record subquery expression.
   */
@@ -23156,7 +23156,7 @@ declare namespace search {
  interface NullFallbackPreference extends Number{}
 }
 
-declare namespace hook {
+namespace hook {
  /**
   * wrapped local Hook embedded struct to limit the public API surface.
   */
@@ -23165,7 +23165,7 @@ declare namespace hook {
  }
 }
 
-declare namespace router {
+namespace router {
  // @ts-ignore
  import validation = ozzo_validation
  /**
@@ -23299,10 +23299,10 @@ declare namespace router {
  }
 }
 
-declare namespace subscriptions {
+namespace subscriptions {
 }
 
-declare namespace slog {
+namespace slog {
  /**
   * An Attr is a key-value pair.
   */
@@ -23475,7 +23475,7 @@ declare namespace slog {
  import loginternal = internal
 }
 
-declare namespace cron {
+namespace cron {
  /**
   * Job defines a single registered cron job.
   */
@@ -23508,7 +23508,7 @@ declare namespace cron {
  }
 }
 
-declare namespace cobra {
+namespace cobra {
  interface PositionalArgs {(cmd: Command, args: Array<string>): void }
  // @ts-ignore
  import flag = pflag
@@ -23580,7 +23580,7 @@ declare namespace cobra {
  * as specified in RFC 6749.
  * It can additionally grant authorization with Bearer JWT.
  */
-declare namespace oauth2 {
+namespace oauth2 {
  /**
   * An AuthCodeOption is passed to Config.AuthCodeURL.
   */
@@ -23670,7 +23670,7 @@ declare namespace oauth2 {
  }
 }
 
-declare namespace slog {
+namespace slog {
  // @ts-ignore
  import loginternal = internal
  /**
@@ -23842,7 +23842,7 @@ declare namespace slog {
  }
 }
 
-declare namespace url {
+namespace url {
  /**
   * The Userinfo type is an immutable encapsulation of username and
   * password details for a [URL]. An existing Userinfo value is guaranteed
@@ -23872,7 +23872,7 @@ declare namespace url {
  }
 }
 
-declare namespace multipart {
+namespace multipart {
  /**
   * A Part represents a single part in a multipart body.
   */
@@ -23911,7 +23911,7 @@ declare namespace multipart {
  }
 }
 
-declare namespace http {
+namespace http {
  /**
   * SameSite allows a server to define a cookie attribute making it impossible for
   * the browser to send this cookie along with cross-site requests. The main
@@ -23927,10 +23927,10 @@ declare namespace http {
  import urlpkg = url
 }
 
-declare namespace oauth2 {
+namespace oauth2 {
 }
 
-declare namespace search {
+namespace search {
  /**
   * Join defines common fields required for a single SQL JOIN clause.
   */
@@ -23941,7 +23941,7 @@ declare namespace search {
  }
 }
 
-declare namespace router {
+namespace router {
  // @ts-ignore
  import validation = ozzo_validation
  interface Route<T> {
@@ -23982,7 +23982,7 @@ declare namespace router {
  }
 }
 
-declare namespace cobra {
+namespace cobra {
  // @ts-ignore
  import flag = pflag
  /**
@@ -23992,7 +23992,7 @@ declare namespace cobra {
  interface ShellCompDirective extends Number{}
 }
 
-declare namespace slog {
+namespace slog {
  // @ts-ignore
  import loginternal = internal
  /**
@@ -24014,7 +24014,7 @@ declare namespace slog {
  }
 }
 
-declare namespace router {
+namespace router {
  // @ts-ignore
  import validation = ozzo_validation
 }

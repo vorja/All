@@ -7,15 +7,11 @@ import ServicesPage from './pages/ServicesPage.jsx';
 import VariableExpensesPage from './pages/VariableExpensesPage.jsx';
 import QualityPage from './pages/QualityPage.jsx';
 import InsumosPage from './pages/InsumosPage.jsx';
-import SupplyIncomePage from './pages/SupplyIncomePage.jsx';
+import SupplyIncomeExcelPage from './pages/SupplyIncomeExcelPage.jsx';
 import PayrollPage from './pages/PayrollPage.jsx';
 import PayrollIntakePage from './pages/PayrollIntakePage.jsx';
 import ControlHorasPage from './pages/ControlHorasPage.jsx';
 import EmpleadosPage from './pages/EmpleadosPage.jsx';
-import CosteoPorFasePage from './pages/CosteoPorFasePage.jsx';
-import RentabilidadPorLotePage from './pages/RentabilidadPorLotePage.jsx';
-import ProductividadVsCostoPage from './pages/ProductividadVsCostoPage.jsx';
-import DesviacionesPage from './pages/DesviacionesPage.jsx';
 import { Toaster } from '@/components/ui/toaster';
 
 function App() {
@@ -32,7 +28,7 @@ function App() {
             <Route path="/gastos-variables" element={<VariableExpensesPage />} />
             <Route path="/calidad" element={<QualityPage />} />
             <Route path="/insumos" element={<InsumosPage />} />
-            <Route path="/supply-income" element={<SupplyIncomePage />} />
+            <Route path="/supply-income" element={<SupplyIncomeExcelPage />} />
             
             <Route path="/empleados" element={<EmpleadosPage />} /> 
             
@@ -40,10 +36,6 @@ function App() {
             <Route path="/nominas" element={<PayrollPage />} />
             <Route path="/ingreso-nominas" element={<PayrollIntakePage />} />
             <Route path="/control-horas" element={<ControlHorasPage />} />
-            <Route path="/costeo-fase" element={<CosteoPorFasePage />} />
-            <Route path="/rentabilidad-lote" element={<RentabilidadPorLotePage />} />
-            <Route path="/productividad-vs-costo" element={<ProductividadVsCostoPage />} />
-            <Route path="/desviaciones" element={<DesviacionesPage />} />
             
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
